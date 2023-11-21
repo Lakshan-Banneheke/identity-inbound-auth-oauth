@@ -183,7 +183,7 @@ public class ClaimsUtil {
                 .getMappingsMapFromOtherDialectToCarbon(SP_DIALECT, null, spTenantDomain, false);
 
         for (Map.Entry<String, String> oidcToLocalClaimMapping : spToLocalClaimMappings.entrySet()) {
-            String value = userClaims.get(oidcToLocalClaimMapping.getValue());
+            String value = userClaims.get(oidcToLocalClaimMapping.getKey());
             if (value != null && requestedLocalClaims.contains(oidcToLocalClaimMapping.getValue())) {
                 mappedAppClaims.put(oidcToLocalClaimMapping.getKey(), value);
                 if (log.isDebugEnabled() &&
