@@ -22,16 +22,22 @@ import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.wso2.carbon.base.MultitenantConstants;
 import org.wso2.carbon.context.PrivilegedCarbonContext;
 import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
 import org.wso2.carbon.identity.application.common.IdentityApplicationManagementException;
 import org.wso2.carbon.identity.application.common.model.ServiceProvider;
 import org.wso2.carbon.identity.central.log.mgt.utils.LogConstants;
 import org.wso2.carbon.identity.central.log.mgt.utils.LoggerUtils;
+import org.wso2.carbon.identity.core.util.IdentityTenantUtil;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
+import org.wso2.carbon.identity.oauth.OAuthAdminServiceImpl;
 import org.wso2.carbon.identity.oauth.common.OAuthConstants;
 import org.wso2.carbon.identity.oauth.common.exception.InvalidOAuthClientException;
 import org.wso2.carbon.identity.oauth.config.OAuthServerConfiguration;
+import org.wso2.carbon.identity.oauth.dao.OAuthAppDO;
+import org.wso2.carbon.identity.oauth.dto.OAuthConsumerAppDTO;
+import org.wso2.carbon.identity.oauth.internal.OAuthComponentServiceHolder;
 import org.wso2.carbon.identity.oauth.tokenprocessor.TokenProvider;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.OAuth2Constants;
@@ -64,6 +70,7 @@ public class TokenValidationHandler {
     private Map<String, OAuth2TokenValidator> tokenValidators = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     private TokenProvider tokenValidationProcessor;
     private static final String BEARER_TOKEN_TYPE = "Bearer";
+    private static final String DPOP_TOKEN_TYPE = "DPoP";
     private static final String BEARER_TOKEN_TYPE_JWT = "jwt";
     private static final String BUILD_FQU_FROM_SP_CONFIG = "OAuth.BuildSubjectIdentifierFromSPConfig";
     private static final String ENABLE_JWT_TOKEN_VALIDATION = "OAuth.EnableJWTTokenValidationDuringIntrospection";
@@ -498,8 +505,9 @@ public class TokenValidationHandler {
             }
 
         } else {
+            String tenantDomain;
             try {
-                String tenantDomain = PrivilegedCarbonContext.getThreadLocalCarbonContext().getTenantDomain();
+                tenantDomain = PrivilegedCarbonContext.getThreadLocalCarbonContext().getTenantDomain();
                 accessTokenDO = OAuth2ServiceComponentHolder.getInstance().getTokenProvider()
                         .getVerifiedAccessToken(validationRequest.getAccessToken().getIdentifier(), false);
                 boolean isCrossTenantTokenIntrospectionAllowed
@@ -563,9 +571,11 @@ public class TokenValidationHandler {
             }
 
             String tokenType = accessTokenDO.getTokenType();
-            boolean removeUsernameFromAppTokenEnabled = OAuthServerConfiguration.getInstance()
+            boolean removeUsernameFromAppTokenEnabledServerConfig = OAuthServerConfiguration.getInstance()
                     .isRemoveUsernameFromIntrospectionResponseForAppTokensEnabled();
             boolean isAppTokenType = StringUtils.equals(OAuthConstants.UserType.APPLICATION, tokenType);
+            boolean removeUsernameFromAppTokenEnabledAppConfig =
+                    isOmitUsernameInIntrospectionRespForAppTokens(accessTokenDO, tenantDomain);
 
             // should be in seconds
             introResp.setIat(accessTokenDO.getIssuedTime().getTime() / 1000);
@@ -574,7 +584,8 @@ public class TokenValidationHandler {
             // token scopes
             introResp.setScope(OAuth2Util.buildScopeString((accessTokenDO.getScope())));
             // set user-name
-            if (!removeUsernameFromAppTokenEnabled || !isAppTokenType) {
+            if (!(removeUsernameFromAppTokenEnabledServerConfig && removeUsernameFromAppTokenEnabledAppConfig)
+                    || !isAppTokenType) {
                 introResp.setUsername(getAuthzUser(accessTokenDO));
             }
             // add client id
@@ -598,6 +609,10 @@ public class TokenValidationHandler {
             // Add authenticated user object since username attribute may not have the domain appended if the
             // subject identifier is built based in the SP config.
             introResp.setAuthorizedUser(accessTokenDO.getAuthzUser());
+            // Set audience if the token is not a JWT.
+            if (!OAuth2Util.isJWT(validationRequest.getAccessToken().getIdentifier())) {
+                addAudienceToIntrospectionResponse(introResp, accessTokenDO);
+            }
         }
 
         if (messageContext.getProperty(OAuth2Util.JWT_ACCESS_TOKEN) != null
@@ -661,6 +676,23 @@ public class TokenValidationHandler {
         // All set. mark the token active.
         introResp.setActive(true);
         return introResp;
+    }
+
+    private static boolean isOmitUsernameInIntrospectionRespForAppTokens(AccessTokenDO accessTokenDO,
+                                                                         String tenantDomain)
+            throws IdentityOAuth2Exception {
+
+        OAuthAdminServiceImpl oAuthAdminService = OAuthComponentServiceHolder.getInstance().getoAuthAdminService();
+        boolean omitUsernameInIntrospectionRespForAppTokens;
+        try {
+            OAuthConsumerAppDTO oAuthApp = oAuthAdminService.getOAuthApplicationData(accessTokenDO.getConsumerKey(),
+                    tenantDomain);
+            omitUsernameInIntrospectionRespForAppTokens = oAuthApp.isOmitUsernameInIntrospectionRespForAppTokens();
+        } catch (Exception e) {
+            throw new IdentityOAuth2Exception("Error occurred while retrieving OAuth2 application data for client id:" +
+                    accessTokenDO.getConsumerKey(), e);
+        }
+        return omitUsernameInIntrospectionRespForAppTokens;
     }
 
     private String getAuthzUser(AccessTokenDO accessTokenDO) throws IdentityOAuth2Exception {
@@ -748,7 +780,8 @@ public class TokenValidationHandler {
         }
 
         OAuth2TokenValidator tokenValidator;
-        if (isJWTTokenValidation(accessToken.getIdentifier())) {
+        if (!StringUtils.equalsIgnoreCase(accessToken.getTokenType(), DPOP_TOKEN_TYPE) &&
+                isJWTTokenValidation(accessToken.getIdentifier())) {
             /*
             If the token is a self-contained JWT based access token and the
             config EnableJWTTokenValidationDuringIntrospection is set to true
@@ -859,5 +892,24 @@ public class TokenValidationHandler {
         String[] validatedScopes = accessTokenDO.getScope();
         String[] scopesToReturn = (String[]) ArrayUtils.addAll(validatedScopes, requestedAllowedScopes);
         introResp.setScope(OAuth2Util.buildScopeString((scopesToReturn)));
+    }
+
+    private void addAudienceToIntrospectionResponse(OAuth2IntrospectionResponseDTO introResp,
+                                                      AccessTokenDO accessTokenDO) throws IdentityOAuth2Exception {
+
+        String tenantDomain = null;
+        try {
+            int appResidentTenantId = accessTokenDO.getAppResidentTenantId();
+            if (appResidentTenantId != MultitenantConstants.INVALID_TENANT_ID) {
+                tenantDomain = IdentityTenantUtil.getTenantDomain(appResidentTenantId);
+                OAuthAppDO oAuthAppDO = OAuth2Util.getAppInformationByClientId(accessTokenDO.getConsumerKey(),
+                        tenantDomain);
+                List<String> audience = OAuth2Util.getOIDCAudience(accessTokenDO.getConsumerKey(), oAuthAppDO);
+                introResp.setAud(String.join(",", audience));
+            }
+        } catch (InvalidOAuthClientException e) {
+            log.warn("Unable to set the audience in the introspection response. Failed to retrieve the " +
+                    "application for client id: " + accessTokenDO.getConsumerKey() + " in tenant: " + tenantDomain);
+        }
     }
 }

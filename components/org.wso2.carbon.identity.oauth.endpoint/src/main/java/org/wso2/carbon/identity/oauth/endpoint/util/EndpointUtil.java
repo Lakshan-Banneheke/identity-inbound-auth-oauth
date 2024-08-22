@@ -22,7 +22,6 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
-import org.apache.axiom.util.base64.Base64Utils;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.Charsets;
 import org.apache.commons.lang.ArrayUtils;
@@ -34,6 +33,7 @@ import org.apache.http.client.utils.URIBuilder;
 import org.apache.oltu.oauth2.as.request.OAuthAuthzRequest;
 import org.apache.oltu.oauth2.as.response.OAuthASResponse;
 import org.apache.oltu.oauth2.common.OAuth;
+import org.apache.oltu.oauth2.common.error.OAuthError;
 import org.apache.oltu.oauth2.common.exception.OAuthProblemException;
 import org.apache.oltu.oauth2.common.exception.OAuthSystemException;
 import org.owasp.encoder.Encode;
@@ -66,6 +66,9 @@ import org.wso2.carbon.identity.discovery.DefaultOIDCProcessor;
 import org.wso2.carbon.identity.discovery.OIDCProcessor;
 import org.wso2.carbon.identity.discovery.builders.DefaultOIDCProviderRequestBuilder;
 import org.wso2.carbon.identity.discovery.builders.OIDCProviderRequestBuilder;
+import org.wso2.carbon.identity.event.IdentityEventException;
+import org.wso2.carbon.identity.event.event.Event;
+import org.wso2.carbon.identity.event.services.IdentityEventService;
 import org.wso2.carbon.identity.oauth.IdentityOAuthAdminException;
 import org.wso2.carbon.identity.oauth.OAuthAdminServiceImpl;
 import org.wso2.carbon.identity.oauth.cache.SessionDataCache;
@@ -84,6 +87,8 @@ import org.wso2.carbon.identity.oauth.endpoint.exception.InvalidRequestException
 import org.wso2.carbon.identity.oauth.endpoint.exception.TokenEndpointBadRequestException;
 import org.wso2.carbon.identity.oauth.endpoint.message.OAuthMessage;
 import org.wso2.carbon.identity.oauth.par.core.ParAuthService;
+import org.wso2.carbon.identity.oauth.par.exceptions.ParClientException;
+import org.wso2.carbon.identity.oauth.user.UserInfoEndpointException;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2ScopeConsentException;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2ScopeException;
@@ -108,6 +113,7 @@ import org.wso2.carbon.identity.openidconnect.OIDCRequestObjectUtil;
 import org.wso2.carbon.identity.openidconnect.RequestObjectBuilder;
 import org.wso2.carbon.identity.openidconnect.RequestObjectService;
 import org.wso2.carbon.identity.openidconnect.RequestObjectValidator;
+import org.wso2.carbon.identity.openidconnect.internal.OpenIDConnectServiceComponentHolder;
 import org.wso2.carbon.identity.openidconnect.model.RequestObject;
 import org.wso2.carbon.identity.webfinger.DefaultWebFingerProcessor;
 import org.wso2.carbon.identity.webfinger.WebFingerProcessor;
@@ -124,12 +130,16 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -147,6 +157,9 @@ import static org.wso2.carbon.identity.oauth.common.OAuthConstants.CODE_IDTOKEN;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.HTTP_REQ_HEADER_AUTH_METHOD_BASIC;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.OauthAppStates.APP_STATE_ACTIVE;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.ResponseModes.JWT;
+import static org.wso2.carbon.identity.oauth.par.common.ParConstants.PRE_HANDLE_PAR_REQUEST;
+import static org.wso2.carbon.identity.oauth.par.common.ParConstants.REQUEST_HEADERS;
+import static org.wso2.carbon.identity.oauth.par.common.ParConstants.REQUEST_PARAMETERS;
 
 /**
  * Util class which contains common methods used by all the OAuth endpoints.
@@ -183,6 +196,7 @@ public class EndpointUtil {
     private static ParAuthService parAuthService;
     private static IdpManager idpManager;
     private static final String ALLOW_ADDITIONAL_PARAMS_FROM_ERROR_URL = "OAuth.AllowAdditionalParamsFromErrorUrl";
+    private static final String KEEP_OIDC_SCOPES_IN_CONSENT_URL = "OAuth.KeepOIDCScopesInConsentURL";
     private static final String IDP_ENTITY_ID = "IdPEntityId";
     private static Class<? extends OAuthAuthzRequest> oAuthAuthzRequestClass;
 
@@ -384,18 +398,22 @@ public class EndpointUtil {
         }
         String errMsg = "Error decoding authorization header. Space delimited \"<authMethod> <base64encoded" +
                 "(username:password)>\" format violated.";
-        String[] splitValues = authorizationHeader.trim().split(" ");
-        if (splitValues.length == 2) {
-            if (HTTP_REQ_HEADER_AUTH_METHOD_BASIC.equals(splitValues[0])) {
-                byte[] decodedBytes = Base64Utils.decode(splitValues[1].trim());
-                String userNamePassword = new String(decodedBytes, Charsets.UTF_8);
-                String[] credentials = userNamePassword.split(":");
-                if (credentials.length == 2) {
-                    return credentials;
+        String[] authHeaderComponents = authorizationHeader.trim().split(" ");
+        if (authHeaderComponents.length == 2) {
+            if (HTTP_REQ_HEADER_AUTH_METHOD_BASIC.equals(authHeaderComponents[0])) {
+                try {
+                    byte[] decodedBytes = Base64.getDecoder().decode(authHeaderComponents[1].trim());
+                    String userNamePassword = new String(decodedBytes, Charsets.UTF_8);
+                    String[] credentials = userNamePassword.split(":");
+                    if (credentials.length == 2) {
+                        return credentials;
+                    }
+                } catch (IllegalArgumentException e) {
+                    throw new OAuthClientException("Error decoding authorization header. " + e.getMessage());
                 }
             } else {
-                errMsg = "Error decoding authorization header.Unsupported authentication type:" + splitValues[0] + "" +
-                        " is provided in the Authorization Header.";
+                errMsg = "Error decoding authorization header. Unsupported authentication type: " +
+                        authHeaderComponents[0] + " is provided in the Authorization Header.";
             }
         }
         throw new OAuthClientException(errMsg);
@@ -961,7 +979,7 @@ public class EndpointUtil {
                     .append(URLEncoder.encode(params.getRedirectURI(), UTF_8));
         }
 
-        if (params != null) {
+        if (params != null && isKeepOIDCScopesInConsentURL()) {
             queryStringBuilder.append('&').append(PROP_OIDC_SCOPE).append('=')
                     .append(URLEncoder.encode(StringUtils.join(getRequestedOIDCScopes(params), " "), UTF_8));
         }
@@ -1044,7 +1062,9 @@ public class EndpointUtil {
                     oAuth2Parameters.getClientId());
         }
         // Remove OIDC scopes.
-        scopesToBeConsented.removeAll(getOIDCScopeNames());
+        if (!isKeepOIDCScopesInConsentURL()) {
+            scopesToBeConsented.removeAll(getOIDCScopeNames());
+        }
         String userId = getUserIdOfAuthenticatedUser(user);
         String appId = getAppIdFromClientId(oAuth2Parameters.getClientId());
         return oAuth2ScopeService.hasUserProvidedConsentForAllRequestedScopes(userId, appId,
@@ -1149,6 +1169,16 @@ public class EndpointUtil {
     }
 
     /**
+     * Check whether the OIDC scopes should be returned as query parameters with the consent URL.
+     *
+     * @return True if OIDC scopes should be returned as query parameters with the consent URL.
+     */
+    private static boolean isKeepOIDCScopesInConsentURL() {
+
+        return Boolean.parseBoolean(IdentityUtil.getProperty(KEEP_OIDC_SCOPES_IN_CONSENT_URL));
+    }
+
+    /**
      * Return a list of consent requested OIDC scopes
      *
      * @param params OAuth2 parameters.
@@ -1181,7 +1211,7 @@ public class EndpointUtil {
      * @return consent required scopes
      * @throws OAuthSystemException If dropping unregistered scopes failed.
      */
-    private static List<String> dropUnregisteredScopesFromConsentRequiredScopes(OAuth2Parameters params)
+    private static List<String> dropOIDCAndUnregisteredScopesFromConsentRequiredScopes(OAuth2Parameters params)
             throws OAuthSystemException {
 
         Set<String> allowedScopes = params.getScopes();
@@ -1200,11 +1230,20 @@ public class EndpointUtil {
                         allowedScopes = dropUnregisteredScopes(params);
                     }
                 }
-                for (String scope : allowedScopes) {
-                    allowedRegisteredScopes.add(scope);
+                if (isKeepOIDCScopesInConsentURL()) {
+                    allowedRegisteredScopes.addAll(allowedScopes);
+                } else {
+                    // Get registered OIDC scopes.
+                    String[] oidcScopes = oAuthAdminService.getScopeNames();
+                    List<String> oidcScopeList = new ArrayList<>(Arrays.asList(oidcScopes));
+                    for (String scope : allowedScopes) {
+                        if (!oidcScopeList.contains(scope)) {
+                            allowedRegisteredScopes.add(scope);
+                        }
+                    }
                 }
-            } catch (OAuthSystemException e) {
-                throw new OAuthSystemException("Error while dropping unregistered scopes.", e);
+            } catch (IdentityOAuthAdminException e) {
+                throw new OAuthSystemException("Error while retrieving OIDC scopes.", e);
             } finally {
                 PrivilegedCarbonContext.endTenantFlow();
             }
@@ -1221,7 +1260,7 @@ public class EndpointUtil {
 
         try {
             //Filter out unregistered scopes to prevent those scopes prompt for consent in the consent page.
-            List<String> consentRequiredScopes = dropUnregisteredScopesFromConsentRequiredScopes(params);
+            List<String> consentRequiredScopes = dropOIDCAndUnregisteredScopesFromConsentRequiredScopes(params);
 
             if (user != null && !isPromptContainsConsent(params)) {
                 String userId = getUserIdOfAuthenticatedUser(user);
@@ -1555,6 +1594,48 @@ public class EndpointUtil {
                     .resultStatus(DiagnosticLog.ResultStatus.SUCCESS);
             LoggerUtils.triggerDiagnosticLogEvent(diagnosticLogBuilder);
         }
+    }
+
+    /**
+     * This API validate the oauth application access status.
+     * Check whether an application exits for given consumerKey and check whether user can login into.
+     *
+     * @param consumerKey clientId.
+     * @throws InvalidApplicationClientException If the application access is disabled.
+     */
+    public static void validateAppAccess(String consumerKey) throws InvalidApplicationClientException,
+            OAuthSystemException {
+
+        try {
+            ServiceProvider serviceProvider = OAuth2Util.getServiceProvider(consumerKey);
+            DiagnosticLog.DiagnosticLogBuilder diagnosticLogBuilder = null;
+            if (LoggerUtils.isDiagnosticLogsEnabled()) {
+                diagnosticLogBuilder = new DiagnosticLog.DiagnosticLogBuilder(
+                        OAuthConstants.LogConstants.OAUTH_INBOUND_SERVICE,
+                        OAuthConstants.LogConstants.ActionIDs.VALIDATE_APPLICATION_ENABLED_STATUS);
+                diagnosticLogBuilder.inputParam(LogConstants.InputKeys.CLIENT_ID, consumerKey)
+                        .logDetailLevel(DiagnosticLog.LogDetailLevel.APPLICATION);
+            }
+            if (!serviceProvider.isApplicationEnabled()) {
+                if (diagnosticLogBuilder != null) {
+                    diagnosticLogBuilder
+                            .resultMessage("Application is disabled.")
+                            .resultStatus(DiagnosticLog.ResultStatus.FAILED);
+                    LoggerUtils.triggerDiagnosticLogEvent(diagnosticLogBuilder);
+                }
+                throw new InvalidApplicationClientException("Application is disabled.");
+            }
+            if (diagnosticLogBuilder != null) {
+                diagnosticLogBuilder
+                        .resultMessage("Application is enabled.")
+                        .resultStatus(DiagnosticLog.ResultStatus.SUCCESS);
+                LoggerUtils.triggerDiagnosticLogEvent(diagnosticLogBuilder);
+            }
+        } catch (IdentityOAuth2Exception e) {
+            throw new OAuthSystemException("Error while retrieving service provider for client id: "
+                    + consumerKey, e);
+        }
+
     }
 
     private static boolean isNotActiveState(String appState) {
@@ -2026,5 +2107,67 @@ public class EndpointUtil {
     public static HttpServletResponseWrapper getHttpServletResponseWrapper (HttpServletResponse response) {
 
         return (HttpServletResponseWrapper) response;
+    }
+
+    /**
+     * Trigger an PRE_HANDLE_PAR_REQUEST event with the request parameters and headers contained in PAR
+     * request, as its properties.
+     *
+     * @param request     HttpServletRequest
+     * @param parameters  Map of parameters
+     * @throws ParClientException If an error occurs while triggering the event.
+     */
+    public static void preHandleParRequest(HttpServletRequest request, Map<String, String> parameters)
+            throws ParClientException {
+
+        Map<String, Enumeration<String>> headers = new HashMap<>();
+        Enumeration<String> headerNames = request.getHeaderNames();
+        while (headerNames.hasMoreElements()) {
+            String headerName = headerNames.nextElement();
+            headers.put(headerName, request.getHeaders(headerName));
+        }
+        HashMap<String, Object> properties = new HashMap<>();
+        properties.put(REQUEST_PARAMETERS, parameters);
+        properties.put(REQUEST_HEADERS, headers);
+
+        // Trigger an event of type PRE_HANDLE_PAR_REQUEST.
+        String eventName = PRE_HANDLE_PAR_REQUEST;
+        try {
+            Event requestObjectPersistanceEvent = new Event(eventName, properties);
+            IdentityEventService identityEventService =
+                    OpenIDConnectServiceComponentHolder.getIdentityEventService();
+            if (identityEventService != null) {
+                if (log.isDebugEnabled()) {
+                    log.debug("The event: " + eventName + " triggered.");
+                }
+
+                identityEventService.handleEvent(requestObjectPersistanceEvent);
+            }
+        } catch (IdentityEventException e) {
+            String message = "Error while triggering the event: " + eventName;
+            log.error(message, e);
+            throw new ParClientException(e.getErrorCode(), e.getMessage());
+        }
+    }
+
+    /**
+     * Read request body from Servlet request.
+     *
+     * @param request Http servlet request.
+     * @return Request body.
+     * @throws UserInfoEndpointException If an error occurred while reading the request body.
+     */
+    public static String readRequestBody(HttpServletRequest request, Charset charset) throws UserInfoEndpointException {
+
+        StringBuilder stringBuilder = new StringBuilder();
+        try (Scanner scanner = new Scanner(request.getInputStream(), charset.name())) {
+            while (scanner.hasNextLine()) {
+                stringBuilder.append(scanner.nextLine());
+            }
+        } catch (IOException e) {
+            throw new UserInfoEndpointException(OAuthError.ResourceResponse.INVALID_REQUEST,
+                    "Unable to read the request body");
+        }
+        return stringBuilder.toString();
     }
 }

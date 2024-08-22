@@ -21,6 +21,7 @@ package org.wso2.carbon.identity.oauth.dcr.bean;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * This object contains the context related to OAuth application registration request.
@@ -47,9 +48,11 @@ public class ApplicationRegistrationRequest implements Serializable {
     private boolean extPkceMandatory = false;
     private boolean extPkceSupportPlain = false;
     private boolean extPublicClient = false;
+    private String extTokenType = null;
     private String jwksURI;
     private String softwareStatement;
     private String tokenEndpointAuthMethod;
+    private Boolean tokenEndpointAllowReusePvtKeyJwt;
     private String tokenEndpointAuthSignatureAlgorithm;
     private String sectorIdentifierURI;
     private String idTokenSignatureAlgorithm;
@@ -63,6 +66,30 @@ public class ApplicationRegistrationRequest implements Serializable {
     private String subjectType;
     private String requestObjectEncryptionAlgorithm;
     private String requestObjectEncryptionMethod;
+    private Map<String, Object> additionalAttributes;
+    private Boolean useClientIdAsSubClaimForAppTokens;
+    private Boolean omitUsernameInIntrospectionRespForAppTokens;
+    private String extAllowedAudience;
+
+    public void setAdditionalAttributes(Map<String, Object> additionalAttributes) {
+
+        this.additionalAttributes = additionalAttributes;
+    }
+
+    public Map<String, Object> getAdditionalAttributes() {
+
+        return additionalAttributes;
+    }
+
+    public String getExtAllowedAudience() {
+
+        return extAllowedAudience;
+    }
+
+    public void setExtAllowedAudience(String extAllowedAudience) {
+
+        this.extAllowedAudience = extAllowedAudience;
+    }
 
     public String getJwksURI() {
 
@@ -347,6 +374,16 @@ public class ApplicationRegistrationRequest implements Serializable {
         this.extPublicClient = extPublicClient;
     }
 
+    public String getExtTokenType() {
+
+        return extTokenType;
+    }
+
+    public void setExtTokenType(String tokenType) {
+
+        this.extTokenType = tokenType;
+    }
+
     public String getTokenEndpointAuthMethod() {
 
         return tokenEndpointAuthMethod;
@@ -355,6 +392,16 @@ public class ApplicationRegistrationRequest implements Serializable {
     public void setTokenEndpointAuthMethod(String tokenEndpointAuthMethod) {
 
         this.tokenEndpointAuthMethod = tokenEndpointAuthMethod;
+    }
+
+    public Boolean isTokenEndpointAllowReusePvtKeyJwt() {
+
+        return tokenEndpointAllowReusePvtKeyJwt;
+    }
+
+    public void setTokenEndpointAllowReusePvtKeyJwt(Boolean tokenEndpointAllowReusePvtKeyJwt) {
+
+        this.tokenEndpointAllowReusePvtKeyJwt = tokenEndpointAllowReusePvtKeyJwt;
     }
 
     public String getTokenEndpointAuthSignatureAlgorithm() {
@@ -496,5 +543,24 @@ public class ApplicationRegistrationRequest implements Serializable {
         this.softwareStatement = softwareStatement;
     }
 
+    public Boolean getUseClientIdAsSubClaimForAppTokens() {
+
+        return useClientIdAsSubClaimForAppTokens;
+    }
+
+    public void setUseClientIdAsSubClaimForAppTokens(Boolean useClientIdAsSubClaimForAppTokens) {
+
+        this.useClientIdAsSubClaimForAppTokens = useClientIdAsSubClaimForAppTokens;
+    }
+
+    public Boolean getOmitUsernameInIntrospectionRespForAppTokens() {
+
+        return omitUsernameInIntrospectionRespForAppTokens;
+    }
+
+    public void setOmitUsernameInIntrospectionRespForAppTokens(Boolean omitUsernameInIntrospectionRespForAppTokens) {
+
+        this.omitUsernameInIntrospectionRespForAppTokens = omitUsernameInIntrospectionRespForAppTokens;
+    }
 
 }

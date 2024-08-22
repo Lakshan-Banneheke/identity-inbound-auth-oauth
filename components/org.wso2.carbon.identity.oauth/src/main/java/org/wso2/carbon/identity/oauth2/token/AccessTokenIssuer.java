@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2023, WSO2 LLC. (http://www.wso2.com).
+ * Copyright (c) 2017-2024, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -96,6 +96,8 @@ import java.util.stream.Stream;
 
 import static org.apache.commons.lang.StringUtils.isNotBlank;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.GrantTypes.REFRESH_TOKEN;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.IMPERSONATING_ACTOR;
+import static org.wso2.carbon.identity.oauth.common.OAuthConstants.LogConstants.InputKeys.IMPERSONATOR;
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.OauthAppStates.APP_STATE_ACTIVE;
 import static org.wso2.carbon.identity.oauth2.OAuth2Constants.MAX_ALLOWED_LENGTH;
 import static org.wso2.carbon.identity.oauth2.Oauth2ScopeConstants.CONSOLE_SCOPE_PREFIX;
@@ -115,6 +117,7 @@ public class AccessTokenIssuer {
     private static final Log log = LogFactory.getLog(AccessTokenIssuer.class);
     private Map<String, AuthorizationGrantHandler> authzGrantHandlers;
     public static final String OAUTH_APP_DO = "OAuthAppDO";
+    private static final String SERVICE_PROVIDERS_SUB_CLAIM = "ServiceProviders.UseUsernameAsSubClaim";
 
     /**
      * Private constructor which will not allow to create objects of this class from outside
@@ -188,7 +191,6 @@ public class AccessTokenIssuer {
                         authorizationGrantCacheEntry.getAccessTokenExtensionDO());
             }
         }
-
 
         triggerPreListeners(tokenReqDTO, tokReqMsgCtx, isRefreshRequest);
 
@@ -300,10 +302,7 @@ public class AccessTokenIssuer {
 
         tokReqMsgCtx.addProperty(OAUTH_APP_DO, oAuthAppDO);
 
-        boolean isOfTypeApplicationUser = authzGrantHandler.isOfTypeApplicationUser();
-
-        boolean useClientIdAsSubClaimForAppTokensEnabled = OAuthServerConfiguration.getInstance()
-                .isUseClientIdAsSubClaimForAppTokensEnabled();
+        boolean isOfTypeApplicationUser = authzGrantHandler.isOfTypeApplicationUser(tokReqMsgCtx);
 
         if (!isOfTypeApplicationUser) {
             tokReqMsgCtx.setAuthorizedUser(oAuthAppDO.getAppOwner());
@@ -351,8 +350,33 @@ public class AccessTokenIssuer {
             triggerPostListeners(tokenReqDTO, tokenRespDTO, tokReqMsgCtx, isRefreshRequest);
             return tokenRespDTO;
         }
+
+        String syncLockString = authzGrantHandler.buildSyncLockString(tokReqMsgCtx);
+        if (StringUtils.isBlank(syncLockString)) {
+            return validateGrantAndIssueToken(tokenReqDTO, tokReqMsgCtx, tokenRespDTO, authzGrantHandler,
+                    tenantDomainOfApp, oAuthAppDO);
+        }
+        synchronized (syncLockString.intern()) {
+            return validateGrantAndIssueToken(tokenReqDTO, tokReqMsgCtx, tokenRespDTO, authzGrantHandler,
+                    tenantDomainOfApp, oAuthAppDO);
+        }
+    }
+
+    private OAuth2AccessTokenRespDTO validateGrantAndIssueToken(OAuth2AccessTokenReqDTO tokenReqDTO,
+                                                                OAuthTokenReqMessageContext tokReqMsgCtx,
+                                                                OAuth2AccessTokenRespDTO tokenRespDTO,
+                                                                AuthorizationGrantHandler authzGrantHandler,
+                                                                String tenantDomainOfApp,
+                                                                OAuthAppDO oAuthAppDO) throws IdentityException {
+
+        String grantType = tokenReqDTO.getGrantType();
+        boolean isRefreshRequest = GrantType.REFRESH_TOKEN.toString().equals(grantType);
+        boolean isOfTypeApplicationUser = authzGrantHandler.isOfTypeApplicationUser(tokReqMsgCtx);
+        boolean useClientIdAsSubClaimForAppTokensEnabled = OAuthServerConfiguration.getInstance()
+                .isUseClientIdAsSubClaimForAppTokensEnabled();
+
         boolean isValidGrant = false;
-        error = "Provided Authorization Grant is invalid";
+        String error = "Provided Authorization Grant is invalid";
         String errorCode = OAuthError.TokenResponse.INVALID_GRANT;
         try {
             isValidGrant = authzGrantHandler.validateGrant(tokReqMsgCtx);
@@ -435,7 +459,8 @@ public class AccessTokenIssuer {
 
             AuthenticatedUser authorizedUser = tokReqMsgCtx.getAuthorizedUser();
             if (authorizedUser.getAuthenticatedSubjectIdentifier() == null) {
-                if (!isOfTypeApplicationUser && useClientIdAsSubClaimForAppTokensEnabled) {
+                if (!isOfTypeApplicationUser && useClientIdAsSubClaimForAppTokensEnabled
+                        && oAuthAppDO.isUseClientIdAsSubClaimForAppTokens()) {
                     authorizedUser.setAuthenticatedSubjectIdentifier(oAuthAppDO.getOauthConsumerKey());
                 } else {
                     authorizedUser.setAuthenticatedSubjectIdentifier(
@@ -484,8 +509,16 @@ public class AccessTokenIssuer {
                     .inputParam(OAuthConstants.LogConstants.InputKeys.GRANT_TYPE, grantType)
                     .inputParam("token expiry time (s)", tokenRespDTO.getExpiresIn())
                     .resultStatus(DiagnosticLog.ResultStatus.SUCCESS)
-                    .resultMessage("Access token issued for the application.")
                     .logDetailLevel(DiagnosticLog.LogDetailLevel.APPLICATION);
+            if (tokReqMsgCtx.isImpersonationRequest()) {
+                if (tokReqMsgCtx.getProperty(IMPERSONATING_ACTOR) != null) {
+                    String impersonatorId = tokReqMsgCtx.getProperty(IMPERSONATING_ACTOR).toString();
+                    diagnosticLogBuilder.inputParam(IMPERSONATOR, impersonatorId);
+                }
+                diagnosticLogBuilder.resultMessage("Impersonated Access token issued for the application.");
+            } else {
+                diagnosticLogBuilder.resultMessage("Access token issued for the application.");
+            }
             if (tokReqMsgCtx.getAuthorizedUser() != null) {
                 diagnosticLogBuilder.inputParam(LogConstants.InputKeys.USER_ID,
                         tokReqMsgCtx.getAuthorizedUser().getUserId());
@@ -567,6 +600,8 @@ public class AccessTokenIssuer {
             addUserAttributesAgainstAccessTokenForPasswordGrant(tokenRespDTO, tokReqMsgCtx);
         }
 
+        persistCustomizedAccessTokenAttributesForRefreshToken(tokenRespDTO, tokReqMsgCtx);
+
         if (GrantType.AUTHORIZATION_CODE.toString().equals(grantType)) {
             // Cache entry against the authorization code has no value beyond the token request.
             clearCacheEntryAgainstAuthorizationCode(getAuthorizationCode(tokenReqDTO));
@@ -607,6 +642,19 @@ public class AccessTokenIssuer {
 
         OAuth2AccessTokenReqDTO tokenReqDTO = tokReqMsgCtx.getOauth2AccessTokenReqDTO();
         String grantType = tokenReqDTO.getGrantType();
+        if (tokReqMsgCtx.isImpersonationRequest() && OAuthConstants.GrantTypes.TOKEN_EXCHANGE.equals(grantType)) {
+            /*
+             In the impersonation flow, we have already completed scope validation during the /authorize call and
+             issued a subject token with the authorized scopes. During the token flow, if the scope body param presented
+             then we will take the intersection of scope. This also handled in the token exchange handler. Therefore,
+             it does not make sense to go through scope validation again as there won't be any new scopes to validate.
+            */
+            if (log.isDebugEnabled()) {
+                log.debug("Skipping scope validation for impersonation flow as scope validation has already " +
+                        "happened in the authorize flow.");
+            }
+            return true;
+        }
         if (GrantType.AUTHORIZATION_CODE.toString().equals(grantType)) {
             /*
              In the authorization code flow, we have already completed scope validation during the /authorize call and
@@ -705,6 +753,13 @@ public class AccessTokenIssuer {
             } else {
                 // Engage new scope validator
                 authorizedScopes = getAuthorizedScopes(tokReqMsgCtx);
+                authorizedInternalScopes = authorizedScopes.stream()
+                        .filter(scope -> scope.startsWith(INTERNAL_SCOPE_PREFIX) ||
+                                scope.startsWith(CONSOLE_SCOPE_PREFIX) ||
+                                scope.equalsIgnoreCase(SYSTEM_SCOPE))
+                        .toArray(String[]::new);
+                // Remove internal scopes from the authorized scopes since internal scopes are handled separately.
+                authorizedScopes.removeAll(Arrays.asList(authorizedInternalScopes));
             }
             if (isManagementApp && GrantType.CLIENT_CREDENTIALS.toString().equals(grantType) &&
                     ArrayUtils.contains(requestedScopes, SYSTEM_SCOPE)) {
@@ -720,6 +775,9 @@ public class AccessTokenIssuer {
             }
         }
 
+        // Adding the authorized internal scopes to tokReqMsgCtx for any special validators to use.
+        tokReqMsgCtx.setAuthorizedInternalScopes(authorizedInternalScopes);
+
         /*
          Clear the internal scopes. Internal scopes should only handle in JDBCPermissionBasedInternalScopeValidator.
          Those scopes should not send to the other scopes validators. Thus remove the scopes from the tokReqMsgCtx.
@@ -727,13 +785,10 @@ public class AccessTokenIssuer {
         */
         if (AuthzUtil.isLegacyAuthzRuntime()) {
             removeInternalScopes(tokReqMsgCtx);
-
-            // Adding the authorized internal scopes to tokReqMsgCtx for any special validators to use.
-            tokReqMsgCtx.setAuthorizedInternalScopes(authorizedInternalScopes);
         } else {
+            removeAuthorizedScopes(tokReqMsgCtx, Arrays.asList(authorizedInternalScopes));
             removeAuthorizedScopes(tokReqMsgCtx, authorizedScopes);
         }
-
 
         boolean isDropUnregisteredScopes = OAuthServerConfiguration.getInstance().isDropUnregisteredScopes();
         if (isDropUnregisteredScopes) {
@@ -750,9 +805,9 @@ public class AccessTokenIssuer {
         boolean isValidScope = authzGrantHandler.validateScope(tokReqMsgCtx);
         if (isValidScope) {
             // Add authorized internal scopes to the request for sending in the response.
-            if (AuthzUtil.isLegacyAuthzRuntime()) {
-                addAuthorizedInternalScopes(tokReqMsgCtx, tokReqMsgCtx.getAuthorizedInternalScopes());
-            } else {
+            addAuthorizedInternalScopes(tokReqMsgCtx, tokReqMsgCtx.getAuthorizedInternalScopes());
+            if (!AuthzUtil.isLegacyAuthzRuntime()) {
+                // Add authorized scopes to the request for sending in the response in new runtime.
                 addAuthorizedScopes(tokReqMsgCtx, authorizedScopes);
             }
             addAllowedScopes(tokReqMsgCtx, requestedAllowedScopes.toArray(new String[0]));
@@ -786,6 +841,7 @@ public class AccessTokenIssuer {
     }
 
     private ServiceProvider getServiceProvider(OAuth2AccessTokenReqDTO tokenReq) throws IdentityOAuth2Exception {
+
         ServiceProvider serviceProvider;
         try {
             serviceProvider = OAuth2ServiceComponentHolder.getApplicationMgtService().getServiceProviderByClientId(
@@ -825,7 +881,8 @@ public class AccessTokenIssuer {
                     subject = getDefaultSubject(serviceProvider, authenticatedUser);
                     log.warn("Cannot find subject claim: " + subjectClaimUri + " for user:"
                             + authenticatedUser.getLoggableUserId()
-                            + ". Defaulting to username: " + subject + " as the subject identifier.");
+                            + ". Defaulting to username: " + (LoggerUtils.isLogMaskingEnable ?
+                            LoggerUtils.getMaskedContent(subject) : subject) + " as the subject identifier.");
                 }
                 // Get the subject claim in the correct format (ie. tenantDomain or userStoreDomain appended)
                 subject = getFormattedSubjectClaim(serviceProvider, subject, userStoreDomain, userTenantDomain);
@@ -859,6 +916,7 @@ public class AccessTokenIssuer {
 
     private String getDefaultSubject(ServiceProvider serviceProvider, AuthenticatedUser authenticatedUser)
             throws UserIdNotFoundException {
+
         String subject;
         boolean useUserIdForDefaultSubject = false;
         ServiceProviderProperty[] spProperties = serviceProvider.getSpProperties();
@@ -870,6 +928,11 @@ public class AccessTokenIssuer {
                 }
             }
         }
+        boolean useUsernameAsSubClaim = useUsernameAsSubClaim();
+        if (useUsernameAsSubClaim) {
+            return authenticatedUser.getUserName();
+        }
+
         if (useUserIdForDefaultSubject) {
             subject = authenticatedUser.getUserId();
         } else {
@@ -1078,8 +1141,8 @@ public class AccessTokenIssuer {
 
         if (OAuth2Constants.TokenBinderType.CLIENT_REQUEST.equals(tokenBinder.getBindingType()) &&
                 tokenBindingValueOptional.get().length() >= MAX_ALLOWED_LENGTH) {
-                throw new IdentityOAuth2ClientException(OAuth2ErrorCodes.INVALID_REQUEST,
-                        "Token binding reference length exceeds limit");
+            throw new IdentityOAuth2ClientException(OAuth2ErrorCodes.INVALID_REQUEST,
+                    "Token binding reference length exceeds limit");
         }
 
         String tokenBindingValue = tokenBindingValueOptional.get();
@@ -1173,7 +1236,7 @@ public class AccessTokenIssuer {
     }
 
     private void addUserAttributesAgainstAccessTokenForPasswordGrant(OAuth2AccessTokenRespDTO tokenRespDTO,
-                                                           OAuthTokenReqMessageContext tokReqMsgCtx) {
+                                                                     OAuthTokenReqMessageContext tokReqMsgCtx) {
 
         if (tokReqMsgCtx.getAuthorizedUser() != null) {
             AuthorizationGrantCacheKey newCacheKey = new AuthorizationGrantCacheKey(tokenRespDTO.getAccessToken());
@@ -1184,6 +1247,35 @@ public class AccessTokenIssuer {
             authorizationGrantCacheEntry.setValidityPeriod(
                     TimeUnit.MILLISECONDS.toNanos(tokenRespDTO.getExpiresInMillis()));
             AuthorizationGrantCache.getInstance().addToCacheByToken(newCacheKey, authorizationGrantCacheEntry);
+        }
+    }
+
+    private void persistCustomizedAccessTokenAttributesForRefreshToken(OAuth2AccessTokenRespDTO tokenRespDTO,
+                                                                       OAuthTokenReqMessageContext tokReqMsgCtx) {
+
+        /*
+          If pre issue access token actions are executed it may have done modifications to the audience list, claims,
+          incorporated to the access token which are not persisted in the access token table.
+          If so, persist those custom modifications against the token id in the transaction session store
+          to populate the authorized access token context back at refresh token flow.
+         */
+        if (tokReqMsgCtx.isPreIssueAccessTokenActionsExecuted()) {
+            AuthorizationGrantCacheKey newCacheKey = new AuthorizationGrantCacheKey(tokenRespDTO.getTokenId());
+            AuthorizationGrantCacheEntry authorizationGrantCacheEntry =
+                    new AuthorizationGrantCacheEntry();
+            authorizationGrantCacheEntry.setTokenId(tokenRespDTO.getTokenId());
+            authorizationGrantCacheEntry.setPreIssueAccessTokenActionsExecuted(
+                    tokReqMsgCtx.isPreIssueAccessTokenActionsExecuted());
+            authorizationGrantCacheEntry.setAudiences(tokReqMsgCtx.getAudiences());
+            authorizationGrantCacheEntry.setCustomClaims(tokReqMsgCtx.getAdditionalAccessTokenClaims());
+
+            authorizationGrantCacheEntry.setValidityPeriod(
+                    TimeUnit.MILLISECONDS.toNanos(tokReqMsgCtx.getRefreshTokenvalidityPeriod()));
+            AuthorizationGrantCache.getInstance().addToCacheByToken(newCacheKey, authorizationGrantCacheEntry);
+
+            log.debug("Customized audience list and access token attributes from pre issue access token actions " +
+                            "are persisted in the AuthorizationGrantCache against the token id: " +
+                            tokenRespDTO.getTokenId());
         }
     }
 
@@ -1293,7 +1385,7 @@ public class AccessTokenIssuer {
      * provide the correct user store manager from the user realm.
      *
      * @param tenantDomain The tenant domain of the authenticated user.
-     * @param userId The ID of the authenticated user.
+     * @param userId       The ID of the authenticated user.
      * @return User store manager of the user reside organization.
      */
     private Optional<AbstractUserStoreManager> getUserStoreManagerFromRealmOfUserResideOrganization(String tenantDomain,
@@ -1317,5 +1409,19 @@ public class AccessTokenIssuer {
         } catch (OrganizationManagementException | UserStoreException e) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * To get the config value to determine the subject claim value.
+     *
+     * @return Whether username should be used as the subject claim. If false, userId will be used as the subject claim.
+     */
+    public static boolean useUsernameAsSubClaim() {
+
+        String useUsernameAsSubClaim = IdentityUtil.getProperty(SERVICE_PROVIDERS_SUB_CLAIM);
+        if (!StringUtils.isEmpty(useUsernameAsSubClaim)) {
+            return Boolean.parseBoolean(useUsernameAsSubClaim);
+        }
+        return false;
     }
 }

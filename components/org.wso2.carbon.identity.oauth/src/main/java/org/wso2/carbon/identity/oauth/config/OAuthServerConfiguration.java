@@ -144,6 +144,7 @@ public class OAuthServerConfiguration {
     private long applicationAccessTokenValidityPeriodInSeconds = 3600;
     private long refreshTokenValidityPeriodInSeconds = 24L * 3600;
     private long timeStampSkewInSeconds = 300;
+    private boolean enablePasswordFlowEnhancements = false;
     private String tokenPersistenceProcessorClassName =
             "org.wso2.carbon.identity.oauth.tokenprocessor.PlainTextPersistenceProcessor";
     private String oauthTokenGeneratorClassName;
@@ -167,6 +168,7 @@ public class OAuthServerConfiguration {
     private boolean useClientIdAsSubClaimForAppTokens = true;
     private boolean removeUsernameFromIntrospectionResponseForAppTokens = true;
     private boolean useLegacyScopesAsAliasForNewScopes = false;
+    private boolean useLegacyPermissionAccessForUserBasedAuth = false;
     private String accessTokenPartitioningDomains = null;
     private TokenPersistenceProcessor persistenceProcessor = null;
     private Set<OAuthCallbackHandlerMetaData> callbackHandlerMetaData = new HashSet<>();
@@ -235,11 +237,14 @@ public class OAuthServerConfiguration {
     public static final String DEFAULT_OAUTH_AUTHZ_REQUEST_CLASSNAME = CarbonOAuthAuthzRequest.class.getName();
     private String openIDConnectIDTokenCustomClaimsHanlderClassName =
             "org.wso2.carbon.identity.openidconnect.SAMLAssertionClaimsCallback";
+    private String jwtAccessTokenOIDCClaimsHandlerClassName =
+            "org.wso2.carbon.identity.openidconnect.JWTAccessTokenOIDCClaimsHandler";
     private IDTokenBuilder openIDConnectIDTokenBuilder = null;
     private Map<String, String> requestObjectBuilderClassNames = new HashMap<>();
     private volatile RequestObjectValidator requestObjectValidator = null;
     private volatile RequestObjectValidator cibaRequestObjectValidator = null;
     private CustomClaimsCallbackHandler openidConnectIDTokenCustomClaimsCallbackHandler = null;
+    private CustomClaimsCallbackHandler jwtAccessTokenOIDCClaimsHandler = null;
     private String openIDConnectIDTokenIssuerIdentifier = null;
     private String openIDConnectIDTokenSubClaim = "http://wso2.org/claims/fullname";
     private Boolean openIDConnectSkipUserConsent = true;
@@ -318,6 +323,9 @@ public class OAuthServerConfiguration {
     private String deviceAuthzEPUrl = null;
     private List<String> supportedTokenEndpointSigningAlgorithms = new ArrayList<>();
     private Boolean roleBasedScopeIssuerEnabledConfig = false;
+    private String scopeMetadataExtensionImpl = null;
+
+    private final List<String> restrictedQueryParameters = new ArrayList<>();
 
     private OAuthServerConfiguration() {
         buildOAuthServerConfiguration();
@@ -393,6 +401,8 @@ public class OAuthServerConfiguration {
 
         // read default timeout periods
         parseDefaultValidityPeriods(oauthElem);
+
+        parseEnablePasswordFlowEnhancements(oauthElem);
 
         // read OAuth URLs
         parseOAuthURLs(oauthElem);
@@ -518,6 +528,15 @@ public class OAuthServerConfiguration {
 
         // Read config for using legacy scopes as alias for new scopes.
         parseUseLegacyScopesAsAliasForNewScopes(oauthElem);
+
+        // Read config for using legacy permission access for user based auth.
+        parseUseLegacyPermissionAccessForUserBasedAuth(oauthElem);
+
+        // Read config for scope metadata extension implementation.
+        parseScopeMetadataExtensionImpl(oauthElem);
+
+        // Read config for restricted query parameters in oauth requests
+        parseRestrictedQueryParameters(oauthElem);
     }
 
     /**
@@ -530,10 +549,10 @@ public class OAuthServerConfiguration {
         OMElement globalScopeValidatorsElem = oauthConfigElem.getFirstChildWithName(
                 getQNameWithIdentityNS(ConfigElements.GLOBAL_SCOPE_VALIDATORS));
         if (globalScopeValidatorsElem != null) {
-            OMElement roleBasedScopeIssuerEnabledElem = oauthConfigElem.getFirstChildWithName(
+            OMElement roleBasedScopeIssuerEnabledElem = globalScopeValidatorsElem.getFirstChildWithName(
                     getQNameWithIdentityNS(ConfigElements.ROLE_BASED_SCOPE_ISSUER_ENABLED));
             if (roleBasedScopeIssuerEnabledElem != null) {
-                OMElement enableElem = oauthConfigElem.getFirstChildWithName(
+                OMElement enableElem = roleBasedScopeIssuerEnabledElem.getFirstChildWithName(
                         getQNameWithIdentityNS(ConfigElements.ENABLE));
                 roleBasedScopeIssuerEnabledConfig = Boolean.parseBoolean(enableElem.getText().trim());
             }
@@ -874,6 +893,10 @@ public class OAuthServerConfiguration {
 
     public String getOauth2ErrorPageUrl() {
         return oauth2ErrorPageUrl;
+    }
+
+    public boolean isPasswordFlowEnhancementsEnabled() {
+        return enablePasswordFlowEnhancements;
     }
 
     public long getAuthorizationCodeValidityPeriodInSeconds() {
@@ -1438,6 +1461,10 @@ public class OAuthServerConfiguration {
         return useMultiValueSeparatorForAuthContextToken;
     }
 
+    public List<String> getRestrictedQueryParameters() {
+        return restrictedQueryParameters;
+    }
+
     public TokenPersistenceProcessor getPersistenceProcessor() throws IdentityOAuth2Exception {
         if (persistenceProcessor == null) {
             synchronized (this) {
@@ -1974,6 +2001,15 @@ public class OAuthServerConfiguration {
             }
         }
         return new OAuthCallbackHandlerMetaData(className, properties, priority);
+    }
+
+    private void parseEnablePasswordFlowEnhancements(OMElement oauthConfigElem) {
+        OMElement enablePasswordFlowEnhancementsElem =
+                oauthConfigElem.getFirstChildWithName(
+                        getQNameWithIdentityNS(ConfigElements.ENABLE_PASSWORD_FLOW_ENHANCEMENTS));
+        if (enablePasswordFlowEnhancementsElem != null) {
+            enablePasswordFlowEnhancements = Boolean.parseBoolean(enablePasswordFlowEnhancementsElem.getText());
+        }
     }
 
     private void parseDefaultValidityPeriods(OMElement oauthConfigElem) {
@@ -3607,6 +3643,33 @@ public class OAuthServerConfiguration {
         return useLegacyScopesAsAliasForNewScopes;
     }
 
+    /**
+     * Parse the UseLegacyPermissionAccessForUserBasedAuth configuration that used to give legacy permission access in
+     * user based authentication handlers.
+     *
+     * @param oauthConfigElem oauthConfigElem.
+     */
+    private void parseUseLegacyPermissionAccessForUserBasedAuth(OMElement oauthConfigElem) {
+
+        OMElement useLegacyPermissionAccessForUserBasedAuthElem = oauthConfigElem.getFirstChildWithName(
+                getQNameWithIdentityNS(ConfigElements.USE_LEGACY_PERMISSION_ACCESS_FOR_USER_BASED_AUTH));
+        if (useLegacyPermissionAccessForUserBasedAuthElem != null) {
+            useLegacyPermissionAccessForUserBasedAuth =
+                    Boolean.parseBoolean(useLegacyPermissionAccessForUserBasedAuthElem.getText());
+        }
+    }
+
+    /**
+     * This method returns the value of the property UseLegacyPermissionAccessForUserBasedAuth for the OAuth
+     * configuration in identity.xml.
+     *
+     * @return true if the UseLegacyPermissionAccessForUserBasedAuth is enabled.
+     */
+    public boolean isUseLegacyPermissionAccessForUserBasedAuth() {
+
+        return useLegacyPermissionAccessForUserBasedAuth;
+    }
+
     private static void setOAuthResponseJspPageAvailable() {
 
         java.nio.file.Path path = Paths.get(CarbonUtils.getCarbonHome(), "repository", "deployment",
@@ -3673,6 +3736,69 @@ public class OAuthServerConfiguration {
                 }
             }
         }
+    }
+
+    /**
+     * Parse the OAuth2ScopeMetadataExtensionImpl configuration that used to set the scope metadata extension impl
+     * class.
+     *
+     * @param oauthConfigElem oauthConfigElem.
+     */
+    private void parseScopeMetadataExtensionImpl(OMElement oauthConfigElem) {
+
+        OMElement scopeMetadataExtensionImplElem = oauthConfigElem.getFirstChildWithName(
+                getQNameWithIdentityNS(ConfigElements.SCOPE_METADATA_EXTENSION_IMPL));
+        if (scopeMetadataExtensionImplElem != null) {
+            scopeMetadataExtensionImpl = scopeMetadataExtensionImplElem.getText();
+        }
+    }
+
+    private void parseRestrictedQueryParameters(OMElement oauthConfigElem) {
+
+        OMElement restrictedQueryParametersElem = oauthConfigElem.getFirstChildWithName(
+                getQNameWithIdentityNS(ConfigElements.RESTRICTED_QUERY_PARAMETERS_ELEMENT));
+        if (restrictedQueryParametersElem != null) {
+            Iterator paramIterator = restrictedQueryParametersElem.getChildrenWithName(getQNameWithIdentityNS(
+                    ConfigElements.RESTRICTED_QUERY_PARAMETER_ELEMENT));
+            while (paramIterator.hasNext()) {
+                OMElement paramElement = (OMElement) paramIterator.next();
+                restrictedQueryParameters.add(paramElement.getText());
+            }
+        }
+    }
+
+    /**
+     * Get scope metadata service extension impl class.
+     *
+     * @return ScopeMetadataExtensionImpl class name.
+     */
+    public String getScopeMetadataExtensionImpl() {
+
+        return scopeMetadataExtensionImpl;
+    }
+
+    /**
+     * Get JWTAccessTokenOIDCClaimsHandler
+     *
+     * @return JWTAccessTokenOIDCClaimsHandler
+     */
+    public CustomClaimsCallbackHandler getJWTAccessTokenOIDCClaimsHandler() {
+        if (jwtAccessTokenOIDCClaimsHandler == null) {
+            synchronized (CustomClaimsCallbackHandler.class) {
+                if (jwtAccessTokenOIDCClaimsHandler == null) {
+                    try {
+                        Class clazz =
+                                Thread.currentThread().getContextClassLoader()
+                                        .loadClass(jwtAccessTokenOIDCClaimsHandlerClassName);
+                        jwtAccessTokenOIDCClaimsHandler =
+                                (CustomClaimsCallbackHandler) clazz.newInstance();
+                    } catch (ClassNotFoundException | InstantiationException | IllegalAccessException e) {
+                        log.error("Error while instantiating the JWTAccessTokenOIDCClaimsHandler ", e);
+                    }
+                }
+            }
+        }
+        return jwtAccessTokenOIDCClaimsHandler;
     }
 
     /**
@@ -3792,6 +3918,8 @@ public class OAuthServerConfiguration {
 
         // Default timestamp skew
         private static final String TIMESTAMP_SKEW = "TimestampSkew";
+        // Enable password flow enhancements
+        private static final String ENABLE_PASSWORD_FLOW_ENHANCEMENTS = "EnablePasswordFlowEnhancements";
         // Default validity periods
         private static final String AUTHORIZATION_CODE_DEFAULT_VALIDITY_PERIOD =
                 "AuthorizationCodeDefaultValidityPeriod";
@@ -3935,6 +4063,11 @@ public class OAuthServerConfiguration {
         private static final String SUPPORTED_TOKEN_ENDPOINT_SIGNING_ALGS = "SupportedTokenEndpointSigningAlgorithms";
         private static final String SUPPORTED_TOKEN_ENDPOINT_SIGNING_ALG = "SupportedTokenEndpointSigningAlgorithm";
         private static final String USE_LEGACY_SCOPES_AS_ALIAS_FOR_NEW_SCOPES = "UseLegacyScopesAsAliasForNewScopes";
+        private static final String USE_LEGACY_PERMISSION_ACCESS_FOR_USER_BASED_AUTH =
+                "UseLegacyPermissionAccessForUserBasedAuth";
+        private static final String SCOPE_METADATA_EXTENSION_IMPL = "ScopeMetadataService";
+        private static final String RESTRICTED_QUERY_PARAMETERS_ELEMENT = "RestrictedQueryParameters";
+        private static final String RESTRICTED_QUERY_PARAMETER_ELEMENT = "Parameter";
     }
 
 }

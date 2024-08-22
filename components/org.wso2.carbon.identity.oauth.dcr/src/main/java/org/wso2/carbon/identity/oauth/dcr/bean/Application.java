@@ -20,6 +20,7 @@ package org.wso2.carbon.identity.oauth.dcr.bean;
 
 import java.io.Serializable;
 import java.util.List;
+import java.util.Map;
 
 /**
  * This object contains the context related to OAuth application.
@@ -33,8 +34,19 @@ public class Application implements Serializable {
     private String clientSecret = null;
     private List<String> redirectUris = null;
     private List<String> grantTypes = null;
+    private String extApplicationDisplayName = null;
+    private String extApplicationOwner = null;
+    private Long extApplicationTokenLifetime = null;
+    private Long extUserTokenLifetime = null;
+    private Long extRefreshTokenLifetime = null;
+    private Long extIdTokenLifetime = null;
+    private Boolean extPkceMandatory = null;
+    private Boolean extPkceSupportPlain = null;
+    private Boolean extPublicClient = null;
+    private String extTokenType = null;
     private String jwksURI = null;
     private String tokenEndpointAuthMethod = null;
+    private Boolean tokenEndpointAllowReusePvtKeyJwt;
     private String tokenEndpointAuthSignatureAlgorithm = null;
     private String sectorIdentifierURI = null;
     private String idTokenSignatureAlgorithm = null;
@@ -49,6 +61,30 @@ public class Application implements Serializable {
     private String idTokenEncryptionAlgorithm = null;
     private String idTokenEncryptionMethod = null;
     private String softwareStatement = null;
+    private Boolean useClientIdAsSubClaimForAppTokens;
+    private Boolean omitUsernameInIntrospectionRespForAppTokens;
+
+    private Map<String, Object> additionalAttributes;
+    private String extAllowedAudience;
+
+    public void setAdditionalAttributes(Map<String, Object> additionalAttributes) {
+
+        this.additionalAttributes = additionalAttributes;
+    }
+
+    public Map<String, Object> getAdditionalAttributes() {
+
+        return additionalAttributes;
+    }
+
+    public String getExtAllowedAudience() {
+
+        return extAllowedAudience;
+    }
+    public void setExtAllowedAudience(String extAllowedAudience) {
+
+        this.extAllowedAudience = extAllowedAudience;
+    }
 
     public String getSoftwareStatement() {
 
@@ -109,6 +145,107 @@ public class Application implements Serializable {
 
         this.grantTypes = grantTypes;
     }
+
+    public void setExtApplicationDisplayName(String extApplicationDisplayName) {
+
+        this.extApplicationDisplayName = extApplicationDisplayName;
+    }
+
+    public String getExtApplicationDisplayName() {
+
+        return extApplicationDisplayName;
+    }
+
+    public String getExtApplicationOwner() {
+
+        return extApplicationOwner;
+    }
+
+    public void setExtApplicationOwner(String extApplicationOwner) {
+
+        this.extApplicationOwner = extApplicationOwner;
+    }
+
+    public Long getExtApplicationTokenLifetime() {
+
+        return extApplicationTokenLifetime;
+    }
+
+    public void setExtApplicationTokenLifetime(Long extApplicationTokenLifetime) {
+
+        this.extApplicationTokenLifetime = extApplicationTokenLifetime;
+    }
+
+    public Long getExtUserTokenLifetime() {
+
+        return extUserTokenLifetime;
+    }
+
+    public void setExtUserTokenLifetime(Long extUserTokenLifetime) {
+
+        this.extUserTokenLifetime = extUserTokenLifetime;
+    }
+
+    public Long getExtRefreshTokenLifetime() {
+
+        return extRefreshTokenLifetime;
+    }
+
+    public void setExtRefreshTokenLifetime(Long extRefreshTokenLifetime) {
+
+        this.extRefreshTokenLifetime = extRefreshTokenLifetime;
+    }
+
+    public Long getExtIdTokenLifetime() {
+
+        return extIdTokenLifetime;
+    }
+
+    public void setExtIdTokenLifetime(Long extIdTokenLifetime) {
+
+        this.extIdTokenLifetime = extIdTokenLifetime;
+    }
+
+    public Boolean getExtPkceMandatory() {
+
+        return extPkceMandatory;
+    }
+
+    public void setExtPkceMandatory(Boolean extPkceMandatory) {
+
+        this.extPkceMandatory = extPkceMandatory;
+    }
+
+    public Boolean getExtPkceSupportPlain() {
+
+        return extPkceSupportPlain;
+    }
+
+    public void setExtPkceSupportPlain(Boolean extPkceSupportPlain) {
+
+        this.extPkceSupportPlain = extPkceSupportPlain;
+    }
+
+    public Boolean getExtPublicClient() {
+
+        return extPublicClient;
+    }
+
+    public void setExtPublicClient(Boolean extPublicClient) {
+
+        this.extPublicClient = extPublicClient;
+    }
+
+    public String getExtTokenType() {
+
+        return extTokenType;
+    }
+
+    public void setExtTokenType(String extTokenType) {
+
+        this.extTokenType = extTokenType;
+    }
+
     public String getJwksURI() {
 
         return jwksURI;
@@ -127,6 +264,16 @@ public class Application implements Serializable {
     public void setTokenEndpointAuthMethod(String tokenEndpointAuthMethod) {
 
         this.tokenEndpointAuthMethod = tokenEndpointAuthMethod;
+    }
+
+    public Boolean isTokenEndpointAllowReusePvtKeyJwt() {
+
+        return tokenEndpointAllowReusePvtKeyJwt;
+    }
+
+    public void setTokenEndpointAllowReusePvtKeyJwt(Boolean tokenEndpointAllowReusePvtKeyJwt) {
+
+        this.tokenEndpointAllowReusePvtKeyJwt = tokenEndpointAllowReusePvtKeyJwt;
     }
 
     public String getTokenEndpointAuthSignatureAlgorithm() {
@@ -257,6 +404,27 @@ public class Application implements Serializable {
 
         this.idTokenEncryptionMethod = idTokenEncryptionMethod;
     }
+
+    public Boolean getUseClientIdAsSubClaimForAppTokens() {
+
+        return useClientIdAsSubClaimForAppTokens;
+    }
+
+    public void setUseClientIdAsSubClaimForAppTokens(Boolean useClientIdAsSubClaimForAppTokens) {
+
+        this.useClientIdAsSubClaimForAppTokens = useClientIdAsSubClaimForAppTokens;
+    }
+
+    public Boolean getOmitUsernameInIntrospectionRespForAppTokens() {
+
+        return omitUsernameInIntrospectionRespForAppTokens;
+    }
+
+    public void setOmitUsernameInIntrospectionRespForAppTokens(Boolean omitUsernameInIntrospectionRespForAppTokens) {
+
+        this.omitUsernameInIntrospectionRespForAppTokens = omitUsernameInIntrospectionRespForAppTokens;
+    }
+
     @Override
     public String toString() {
 

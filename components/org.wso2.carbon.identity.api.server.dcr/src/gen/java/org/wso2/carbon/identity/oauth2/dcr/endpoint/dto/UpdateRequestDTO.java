@@ -1,8 +1,11 @@
 package org.wso2.carbon.identity.oauth2.dcr.endpoint.dto;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
+import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -31,7 +34,9 @@ public class UpdateRequestDTO {
     private boolean extPkceMandatory;
     private boolean extPkceSupportPlain;
     private boolean extPublicClient;
+    private String extTokenType = null;
     private String tokenEndpointAuthMethod = null;
+    private Boolean tokenEndpointAllowReusePvtKeyJwt;
     private String tokenEndpointAuthSigningAlg = null;
     private String sectorIdentifierUri = null;
     private String idTokenSignedResponseAlg = null;
@@ -46,6 +51,10 @@ public class UpdateRequestDTO {
     private String requestObjectEncryptionAlgorithm = null;
     private String requestObjectEncryptionMethod = null;
     private String softwareStatement = null;
+    private Boolean useClientIdAsSubClaimForAppTokens;
+    private Boolean omitUsernameInIntrospectionRespForAppTokens;
+    private final Map<String, Object> additionalAttributes = new HashMap<>();
+    private String extAllowedAudience;
 
     @ApiModelProperty(value = "")
     @JsonProperty("redirect_uris")
@@ -85,6 +94,16 @@ public class UpdateRequestDTO {
 
     public void setTokenType(String tokenType) {
         this.tokenType = tokenType;
+    }
+
+    @ApiModelProperty
+    @JsonProperty("ext_token_type")
+    public String getExtTokenType() {
+        return extTokenType;
+    }
+
+    public void setExtTokenType(String tokenType) {
+        this.extTokenType = tokenType;
     }
 
     @JsonProperty("client_id")
@@ -227,6 +246,18 @@ public class UpdateRequestDTO {
     }
 
     @ApiModelProperty(value = "")
+    @JsonProperty("token_endpoint_allow_reuse_pvt_key_jwt")
+    public Boolean isTokenEndpointAllowReusePvtKeyJwt() {
+
+        return tokenEndpointAllowReusePvtKeyJwt;
+    }
+
+    public void setTokenEndpointAllowReusePvtKeyJwt(Boolean tokenEndpointAllowReusePvtKeyJwt) {
+
+        this.tokenEndpointAllowReusePvtKeyJwt = tokenEndpointAllowReusePvtKeyJwt;
+    }
+
+    @ApiModelProperty(value = "")
     @JsonProperty("token_endpoint_auth_signing_alg")
     public String getTokenEndpointAuthSigningAlg() {
         return tokenEndpointAuthSigningAlg;
@@ -234,6 +265,24 @@ public class UpdateRequestDTO {
 
     public void setTokenEndpointAuthSigningAlg(String tokenEndpointAuthSigningAlg) {
         this.tokenEndpointAuthSigningAlg = tokenEndpointAuthSigningAlg;
+    }
+
+    @ApiModelProperty(value = "")
+    @JsonProperty("use_client_id_as_sub_claim_for_app_tokens")
+    public Boolean isUseClientIdAsSubClaimForAppTokens() {
+        return useClientIdAsSubClaimForAppTokens;
+    }
+    public void setUseClientIdAsSubClaimForAppTokens(Boolean useClientIdAsSubClaimForAppTokens) {
+        this.useClientIdAsSubClaimForAppTokens = useClientIdAsSubClaimForAppTokens;
+    }
+
+    @ApiModelProperty(value = "")
+    @JsonProperty("omit_username_in_introspection_resp_for_app_tokens")
+    public Boolean isOmitUsernameInIntrospectionRespForAppTokens() {
+        return omitUsernameInIntrospectionRespForAppTokens;
+    }
+    public void setOmitUsernameInIntrospectionRespForAppTokens(Boolean omitUsernameInIntrospectionRespForAppTokens) {
+        this.omitUsernameInIntrospectionRespForAppTokens = omitUsernameInIntrospectionRespForAppTokens;
     }
 
     @ApiModelProperty(value = "")
@@ -375,6 +424,23 @@ public class UpdateRequestDTO {
         this.jwksUri = jwksUri;
     }
 
+    @JsonAnySetter
+    public void setAdditionalAttributes(String key, Object value) {
+        additionalAttributes.put(key, value);
+    }
+
+    public Map<String, Object> getAdditionalAttributes() {
+        return additionalAttributes;
+    }
+
+    @ApiModelProperty(value = "")
+    @JsonProperty("ext_allowed_audience")
+    public String getExtAllowedAudience() {
+        return extAllowedAudience;
+    }
+    public void setExtAllowedAudience(String extAllowedAudience) {
+        this.extAllowedAudience = extAllowedAudience;
+    }
 
     @Override
     public String toString() {
@@ -398,6 +464,9 @@ public class UpdateRequestDTO {
         sb.append("  ext_pkce_mandatory: ").append(extPkceMandatory).append("\n");
         sb.append("  ext_pkce_support_plain: ").append(extPkceSupportPlain).append("\n");
         sb.append("  ext_public_client: ").append(extPublicClient).append("\n");
+        sb.append("  use_client_id_as_sub_claim_for_app_tokens: ").append(useClientIdAsSubClaimForAppTokens).append("\n");
+        sb.append("  omit_username_in_introspection_resp_for_app_tokens: ")
+                .append(omitUsernameInIntrospectionRespForAppTokens).append("\n");
         sb.append("  token_endpoint_auth_method: ").append(tokenEndpointAuthMethod).append("\n");
         sb.append("  token_endpoint_auth_signing_alg: ").append(tokenEndpointAuthSigningAlg).append("\n");
         sb.append("  sector_identifier_uri: ").append(sectorIdentifierUri).append("\n");
@@ -406,6 +475,8 @@ public class UpdateRequestDTO {
         sb.append("  id_token_encrypted_response_enc: ").append(idTokenEncryptedResponseEnc).append("\n");
         sb.append("  request_object_signing_alg: ").append(requestObjectSigningAlg).append("\n");
         sb.append("  tls_client_auth_subject_dn: ").append(tlsClientAuthSubjectDn).append("\n");
+        sb.append("  additionalAttributes: ").append(additionalAttributes).append("\n");
+        sb.append("  extAllowedAudience: ").append(extAllowedAudience).append("\n");
         sb.append("}\n");
         return sb.toString();
     }

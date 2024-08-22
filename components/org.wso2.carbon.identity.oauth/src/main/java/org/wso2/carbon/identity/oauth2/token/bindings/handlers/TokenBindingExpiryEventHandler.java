@@ -37,8 +37,10 @@ import org.wso2.carbon.identity.event.handler.AbstractEventHandler;
 import org.wso2.carbon.identity.oauth.OAuthUtil;
 import org.wso2.carbon.identity.oauth.common.OAuthConstants;
 import org.wso2.carbon.identity.oauth.common.exception.InvalidOAuthClientException;
+import org.wso2.carbon.identity.oauth2.IdentityOAuth2ClientException;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.OAuth2Constants;
+import org.wso2.carbon.identity.oauth2.OAuthSystemClientException;
 import org.wso2.carbon.identity.oauth2.dao.OAuthTokenPersistenceFactory;
 import org.wso2.carbon.identity.oauth2.internal.OAuth2ServiceComponentHolder;
 import org.wso2.carbon.identity.oauth2.model.AccessTokenDO;
@@ -107,12 +109,12 @@ public class TokenBindingExpiryEventHandler extends AbstractEventHandler {
             } else {
                 revokeTokensForCommonAuthCookie(request, getAuthenticatedUser(eventProperties, context));
             }
-        } catch (IdentityOAuth2Exception | OAuthSystemException  e) {
-            log.error("Error while revoking the tokens on session termination.", e);
-        } catch (InvalidOAuthClientException e) {
+        } catch (InvalidOAuthClientException | IdentityOAuth2ClientException e) {
             if (log.isDebugEnabled()) {
                 log.debug("Error while revoking the tokens on session termination.", e);
             }
+        } catch (IdentityOAuth2Exception | OAuthSystemException  e) {
+            log.error("Error while revoking the tokens on session termination.", e);
         }
     }
 
@@ -202,13 +204,13 @@ public class TokenBindingExpiryEventHandler extends AbstractEventHandler {
                                             String bindingType) throws IdentityOAuth2Exception,
             InvalidOAuthClientException, OAuthSystemException {
 
-        revokeTokensOfBindingRef(user, getBindingRefFromType(request, consumerKey, bindingType));
+        revokeTokensOfBindingRef(user, getBindingRefFromType(request, consumerKey, bindingType), bindingType);
     }
 
     private void revokeTokensForCommonAuthCookie(HttpServletRequest request, AuthenticatedUser user) throws
             IdentityOAuth2Exception, InvalidOAuthClientException {
 
-        revokeTokensOfBindingRef(user, getBindingRefFromCommonAuthCookie(request));
+        revokeTokensOfBindingRef(user, getBindingRefFromCommonAuthCookie(request), null);
     }
 
     /**
@@ -237,12 +239,18 @@ public class TokenBindingExpiryEventHandler extends AbstractEventHandler {
         }
 
         TokenBinder tokenBinder = tokenBinderOptional.get();
-        String tokenBindingRef = OAuth2Util.getTokenBindingReference(tokenBinder.getTokenBindingValue(request));
-        if (StringUtils.isBlank(tokenBindingRef)) {
-            throw new IdentityOAuth2Exception("Token binding reference is null for the application " +
-                    consumerKey + " with binding type " + bindingType + ".");
+
+        try {
+            String tokenBindingRef = OAuth2Util.getTokenBindingReference(tokenBinder.getTokenBindingValue(request));
+            if (StringUtils.isBlank(tokenBindingRef)) {
+                throw new IdentityOAuth2ClientException("Token binding reference is null for the application " +
+                        consumerKey + " with binding type " + bindingType + ".");
+            }
+            return tokenBindingRef;
+        } catch (OAuthSystemClientException e) {
+            String errorMsg = "No bound tokens found for the the provided binding reference";
+            throw new IdentityOAuth2ClientException(errorMsg, e);
         }
-        return tokenBindingRef;
     }
 
     /**
@@ -280,11 +288,12 @@ public class TokenBindingExpiryEventHandler extends AbstractEventHandler {
      *
      * @param user                  authenticated user
      * @param tokenBindingReference token binding reference
+     * @param tokenBindingType      token binding type for the current binding reference
      * @throws IdentityOAuth2Exception     if an exception occurs while revoking tokens
      * @throws InvalidOAuthClientException if an exception occurs while revoking tokens
      */
-    private void revokeTokensOfBindingRef(AuthenticatedUser user, String tokenBindingReference) throws
-            IdentityOAuth2Exception, InvalidOAuthClientException {
+    private void revokeTokensOfBindingRef(AuthenticatedUser user, String tokenBindingReference, String tokenBindingType)
+            throws IdentityOAuth2Exception, InvalidOAuthClientException {
 
         if (StringUtils.isBlank(tokenBindingReference) || user == null) {
             return;
@@ -293,8 +302,9 @@ public class TokenBindingExpiryEventHandler extends AbstractEventHandler {
         try {
             userId = user.getUserId();
         } catch (UserIdNotFoundException e) {
-            log.error("User id cannot be found for user: " + user.getLoggableUserId() + ". Hence skip revoking " +
-                    "relevant tokens");
+            // Masking getLoggableUserId as it will return the username because the user id is not available.
+            log.error("User id cannot be found for user: " + user.getLoggableMaskedUserId() +
+                    ". Hence skip revoking relevant tokens");
             throw new IdentityOAuth2Exception("Unable to revoke tokens for the token binding reference: "
                     + tokenBindingReference);
         }
@@ -320,11 +330,15 @@ public class TokenBindingExpiryEventHandler extends AbstractEventHandler {
                                     user.getFederatedIdPName(), authenticatedUser.getFederatedIdPName())
                             && StringUtils.equalsIgnoreCase(user.getUserName(), authenticatedUser.getUserName())) {
                         revokeFederatedTokens(consumerKey, user, accessTokenDO, tokenBindingReference);
-                    } else if (StringUtils.equalsIgnoreCase(userId, authenticatedUser.getUserId())) {
+                    } else if (
+                            StringUtils.equalsIgnoreCase(tokenBindingType,
+                                    OAuth2Constants.TokenBinderType.SSO_SESSION_BASED_TOKEN_BINDER) ||
+                                    StringUtils.equalsIgnoreCase(userId, authenticatedUser.getUserId())) {
                         revokeTokens(consumerKey, accessTokenDO, tokenBindingReference);
                     }
                 } catch (UserIdNotFoundException e) {
-                    log.error("User id cannot be found for user: " + authenticatedUser.getLoggableUserId());
+                    // Masking getLoggableUserId as it will return the username because the user id is not available.
+                    log.error("User id cannot be found for user: " + user.getLoggableMaskedUserId());
                     throw new IdentityOAuth2Exception("Unable to revoke tokens of the app: " + consumerKey +
                             " for the token binding reference: " + tokenBindingReference);
                 }

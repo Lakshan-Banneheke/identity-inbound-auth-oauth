@@ -128,6 +128,8 @@ public final class OAuthConstants {
     public static final String ENABLE_TLS_CERT_BOUND_ACCESS_TOKENS_VIA_BINDING_TYPE = "OAuth.OpenIDConnect." +
             "EnableTLSCertificateBoundAccessTokensViaBindingType";
     public static final String IS_API_BASED_LOGOUT_WITHOUT_COOKIES = "isAPIBasedLogoutWithoutCookies";
+    public static final String ENABLE_HYBRID_FLOW_APPLICATION_LEVEL_VALIDATION = "OAuth.OpenIDConnect" +
+            ".EnableHybridFlowAppLevelValidation";
 
     /**
      * Enum for OIDC supported subject types.
@@ -186,6 +188,10 @@ public final class OAuthConstants {
     public static final String CODE_TOKEN = "code token";
     public static final String CODE_IDTOKEN = "code id_token";
     public static final String CODE_IDTOKEN_TOKEN = "code id_token token";
+    public static final String SUBJECT_TOKEN = "subject_token";
+    public static final String ID_TOKEN_SUBJECT_TOKEN = "id_token subject_token";
+    public static final String IMPERSONATED_SUBJECT = "IMPERSONATED_SUBJECT";
+    public static final String IMPERSONATING_ACTOR = "IMPERSONATING_ACTOR";
     public static final String IDTOKEN_TOKEN = "id_token token";
     public static final String SCOPE = "scope";
 
@@ -210,6 +216,7 @@ public final class OAuthConstants {
 
     public static final String RESPONSE_HEADERS_PROPERTY = "RESPONSE_HEADERS";
     public static final String CLIENT_AUTHN_CONTEXT = "oauth.client.authentication.context";
+    public static final String TRANSPORT_ENDPOINT_ADDRESS = "org.apache.cxf.transport.endpoint.address";
 
     //Constants used for multiple scopes
     public static final String OIDC_SCOPE_CONFIG_PATH = "oidc-scope-config.xml";
@@ -239,11 +246,17 @@ public final class OAuthConstants {
     public static final String RENEW_TOKEN_WITHOUT_REVOKING_EXISTING_ENABLE_CONFIG =
             "OAuth.JWT.RenewTokenWithoutRevokingExisting.Enable";
     public static final String OAUTH_BUILD_ISSUER_WITH_HOSTNAME = "OAuth.BuildIssuerWithHostname";
+    public static final String MTLS_HOSTNAME = "OAuth.MutualTLSAliases.Hostname";
+    public static final String X_WSO2_MTLS_REQUEST = "x-wso2-mtls-request";
+    public static final String IS_MTLS_REQUEST = "isMtlsRequest";
 
     public static final String REQUEST_BINDING_TYPE = "request";
     public static final String ORG_ID = "org_id";
     public static final String ENABLE_FAPI = "OAuth.OpenIDConnect.FAPI.EnableFAPIValidation";
     public static final String ENABLE_DCR_FAPI_ENFORCEMENT = "OAuth.DCRM.EnableFAPIEnforcement";
+    public static final String DCR_SSA_VALIDATION_JWKS = "OAuth.DCRM.SoftwareStatementJWKS";
+    public static final String DCR_MANDATE_SSA = "OAuth.DCRM.MandatorySoftwareStatement";
+    public static final String DCR_CLIENT_AUTHENTICATION_REQUIRED = "OAuth.DCRM.ClientAuthenticationRequired";
     public static final String FAPI_CLIENT_AUTH_METHOD_CONFIGURATION = "OAuth.OpenIDConnect.FAPI." +
             "AllowedClientAuthenticationMethods.AllowedClientAuthenticationMethod";
     public static final String FAPI_SIGNATURE_ALGORITHM_CONFIGURATION = "OAuth.OpenIDConnect.FAPI." +
@@ -271,6 +284,10 @@ public final class OAuthConstants {
     public static final String PRIVATE_KEY_JWT = "private_key_jwt";
     public static final String TLS_CLIENT_AUTH = "tls_client_auth";
     public static final String RESTRICTED_ENCRYPTION_ALGORITHM = "RSA1_5";
+    public static final String ADDITIONAL_ATTRIBUTE_FILTER = "OAuth.DCRM.AdditionalAttributeFilter";
+    public static final String ENABLE_CLAIMS_SEPARATION_FOR_ACCESS_TOKEN =
+            "OAuth.OpenIDConnect.EnableClaimsSeparationForAccessToken";
+    public static final String OIDC_DIALECT = "http://wso2.org/oidc/claim";
 
     private OAuthConstants() {
 
@@ -291,7 +308,7 @@ public final class OAuthConstants {
         public static final String REFRESH_TOKEN = "refresh_token";
         public static final String DEVICE_CODE = "device_code";
         public static final String ORGANIZATION_SWITCH = "organization_switch";
-        public static final String ORGANIZATION_SWITCH_CC = "organization_switch_cc";
+        public static final String TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange";
 
         private GrantTypes() {
 
@@ -352,6 +369,7 @@ public final class OAuthConstants {
         public static final String RESPONSE_TYPE = "response_type";
         public static final String RESPONSE_MODE = "response_mode";
         public static final String REQUEST = "request";
+        public static final String REQUESTED_SUBJECT = "requested_subject";
 
         private OAuth20Params() {
 
@@ -600,14 +618,23 @@ public final class OAuthConstants {
         public static final String BACK_CHANNEL_LOGOUT_URL = "backChannelLogoutURL";
         public static final String FRONT_CHANNEL_LOGOUT_URL = "frontchannelLogoutURL";
         public static final String TOKEN_TYPE = "tokenType";
+        public static final String HYBRID_FLOW_ENABLED = "hybridFlowEnabled";
+        public static final String HYBRID_FLOW_RESPONSE_TYPE = "hybridFlowResponseType";
         public static final String BYPASS_CLIENT_CREDENTIALS = "bypassClientCredentials";
         public static final String RENEW_REFRESH_TOKEN = "renewRefreshToken";
         public static final String TOKEN_BINDING_TYPE = "tokenBindingType";
         public static final String TOKEN_REVOCATION_WITH_IDP_SESSION_TERMINATION =
                 "tokenRevocationWithIDPSessionTermination";
         public static final String TOKEN_BINDING_VALIDATION = "tokenBindingValidation";
+        public static final String USE_CLIENT_ID_AS_SUB_CLAIM_FOR_APP_TOKENS = "useClientIdAsSubClaimForAppTokens";
+        public static final boolean USE_CLIENT_ID_AS_SUB_CLAIM_FOR_APP_TOKENS_NEW_APP_DEFAULT_VALUE = true;
+        public static final String OMIT_USERNAME_IN_INTROSPECTION_RESP_FOR_APP_TOKEN =
+                "omitUsernameInIntrospectionRespForAppTokens";
+        public static final boolean OMIT_USERNAME_IN_INTROSPECTION_RESP_FOR_APP_TOKEN_NEW_APP_DEFAULT_VALUE =
+                true;
         public static final String TOKEN_BINDING_TYPE_NONE = "None";
         public static final String TOKEN_AUTH_METHOD =  "tokenEndpointAuthMethod";
+        public static final String TOKEN_EP_ALLOW_REUSE_PVT_KEY_JWT =  "tokenEndpointAllowReusePvtKeyJwt";
         public static final String TOKEN_AUTH_SIGNATURE_ALGORITHM = "tokenEndpointAuthSigningAlg";
         public static final String SECTOR_IDENTIFIER_URI = "sectorIdentifierUri";
         public static final String ID_TOKEN_SIGNATURE_ALGORITHM = "idTokenSignedResponseAlg";
@@ -619,7 +646,19 @@ public final class OAuthConstants {
         public static final String REQUEST_OBJECT_ENCRYPTION_ALGORITHM = "requestObjectEncryptionAlgorithm";
         public static final String REQUEST_OBJECT_ENCRYPTION_METHOD = "requestObjectEncryptionMethod";
         public static final String IS_FAPI_CONFORMANT_APP = "isFAPIConformant";
-
+        public static final String IS_SUBJECT_TOKEN_ENABLED = "isSubjectTokenEnabled";
+        public static final String SUBJECT_TOKEN_EXPIRY_TIME = "subjectTokenExpiryTime";
+        public static final int SUBJECT_TOKEN_EXPIRY_TIME_VALUE = 180;
+        public static final String IS_ACCESS_TOKEN_CLAIMS_SEPARATION_ENABLED =
+                "isAccessTokenClaimsSeparationEnabled";
+        public static final String PREVENT_TOKEN_REUSE = "PreventTokenReuse";
+        public static final boolean DEFAULT_VALUE_FOR_PREVENT_TOKEN_REUSE = true;
+        // Name of the {@code  JWTClientAuthenticatorConfig} resource type in the Configuration Management API.
+        public static final String JWT_CONFIGURATION_RESOURCE_TYPE_NAME = "PK_JWT_CONFIGURATION";
+        // Name of the {@code JWTClientAuthenticatorConfig} resource (per tenant) in the Configuration Management API.
+        public static final String JWT_CONFIGURATION_RESOURCE_NAME = "TENANT_PK_JWT_CONFIGURATION";
+        public static final String PVT_KEY_JWT_CLIENT_AUTHENTICATOR_CLASS_NAME = "PrivateKeyJWTClientAuthenticator";
+        public static final String ENABLE_TOKEN_REUSE = "EnableTokenReuse";
         private OIDCConfigProperties() {
 
         }
@@ -680,11 +719,11 @@ public final class OAuthConstants {
         public static final String SUCCESS = "SUCCESS";
         public static final String CLIENT_ID = "client id";
         public static final String TENANT_DOMAIN = "tenant domain";
-        public static final String CREATE_OAUTH_APPLICATION = "CREATE OAUTH APPLICATION";
-        public static final String UPDATE_OAUTH_APPLICATION = "UPDATE OAUTH APPLICATION";
-        public static final String DELETE_OAUTH_APPLICATION = "DELETE OAUTH APPLICATION";
-        public static final String REGENERATE_CLIENT_SECRET = "REGENERATE CLIENT SECRET";
-        public static final String UPDATE_APP_STATE = "UPDATE APP STATE";
+        public static final String CREATE_OAUTH_APPLICATION = "create-oauth-application";
+        public static final String UPDATE_OAUTH_APPLICATION = "update-oauth-application";
+        public static final String DELETE_OAUTH_APPLICATION = "delete-oauth-application";
+        public static final String REGENERATE_CLIENT_SECRET = "regenerate-client-secret";
+        public static final String UPDATE_APP_STATE = "update-app-state";
 
         /**
          * Define action IDs for diagnostic logs.
@@ -693,6 +732,7 @@ public final class OAuthConstants {
 
             public static final String SCOPE_VALIDATION = "validate-scope";
             public static final String ISSUE_ACCESS_TOKEN = "issue-access-token";
+            public static final String ISSUE_SUBJECT_TOKEN = "issue-subject-token";
             public static final String ISSUE_ID_TOKEN = "issue-id-token";
             public static final String VALIDATE_AUTHORIZATION_CODE = "validate-authz-code";
             public static final String ISSUE_AUTHZ_CODE = "issue-authz-code";
@@ -712,6 +752,7 @@ public final class OAuthConstants {
             public static final String VALIDATE_AUTHZ_REQUEST = "validate-authz-request";
             public static final String VALIDATE_INPUT_PARAMS = "validate-input-parameters";
             public static final String VALIDATE_OAUTH_CLIENT = "validate-oauth-client";
+            public static final String VALIDATE_APPLICATION_ENABLED_STATUS = "validate-application-enabled-status";
             public static final String REVOKE_TOKEN = "revoke-token";
             public static final String VALIDATE_TOKEN_BINDING = "validate-token-binding";
             public static final String VALIDATE_PKCE = "validate-pkce";
@@ -750,6 +791,7 @@ public final class OAuthConstants {
             public static final String CALLBACK_URI = "callback URI";
             public static final String PROMPT = "prompt";
             public static final String APP_STATE = "app state";
+            public static final String IMPERSONATOR = "impersonator";
         }
 
         /**

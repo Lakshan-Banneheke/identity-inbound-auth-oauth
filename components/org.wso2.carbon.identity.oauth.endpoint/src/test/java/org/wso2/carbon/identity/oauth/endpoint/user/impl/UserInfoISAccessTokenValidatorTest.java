@@ -18,31 +18,35 @@
 
 package org.wso2.carbon.identity.oauth.endpoint.user.impl;
 
-import org.mockito.Matchers;
 import org.mockito.Mock;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.testng.PowerMockTestCase;
+import org.mockito.MockedStatic;
+import org.mockito.testng.MockitoTestNGListener;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
+import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
 import org.wso2.carbon.identity.oauth.endpoint.util.EndpointUtil;
 import org.wso2.carbon.identity.oauth.user.UserInfoEndpointException;
 import org.wso2.carbon.identity.oauth2.OAuth2TokenValidationService;
 import org.wso2.carbon.identity.oauth2.dto.OAuth2TokenValidationResponseDTO;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.util.Scanner;
+import java.io.InputStream;
 
+import javax.servlet.ServletInputStream;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.core.HttpHeaders;
 
-import static org.powermock.api.mockito.PowerMockito.mockStatic;
-import static org.powermock.api.mockito.PowerMockito.when;
-import static org.powermock.api.mockito.PowerMockito.whenNew;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 
-@PrepareForTest({UserInforRequestDefaultValidator.class, UserInfoISAccessTokenValidator.class, EndpointUtil.class})
-public class UserInfoISAccessTokenValidatorTest extends PowerMockTestCase {
+@Listeners(MockitoTestNGListener.class)
+public class UserInfoISAccessTokenValidatorTest {
 
     @Mock
     private HttpServletRequest httpServletRequest;
@@ -53,7 +57,6 @@ public class UserInfoISAccessTokenValidatorTest extends PowerMockTestCase {
     private final String token = "ZWx1c3VhcmlvOnlsYWNsYXZl";
     private final String basicAuthHeader = "Bearer " + token;
     private static String contentTypeHeaderValue = "application/x-www-form-urlencoded";
-    private Scanner scanner;
 
     @BeforeClass
     public void setup() {
@@ -113,24 +116,52 @@ public class UserInfoISAccessTokenValidatorTest extends PowerMockTestCase {
 
         prepareOAuth2TokenValidationService();
 
-        mockStatic(EndpointUtil.class);
-        when(EndpointUtil.getOAuth2TokenValidationService()).thenReturn(oAuth2TokenValidationService);
+        try (MockedStatic<EndpointUtil> endpointUtil = mockStatic(EndpointUtil.class)) {
+            endpointUtil.when(EndpointUtil::getOAuth2TokenValidationService).thenReturn(oAuth2TokenValidationService);
 
-        OAuth2TokenValidationResponseDTO responseDTO = userInfoISAccessTokenValidator
-                .validateToken(accessTokenIdentifier);
-        assertEquals(responseDTO.getAuthorizationContextToken().getTokenString(), accessTokenIdentifier);
+            OAuth2TokenValidationResponseDTO responseDTO = userInfoISAccessTokenValidator
+                    .validateToken(accessTokenIdentifier);
+            assertEquals(responseDTO.getAuthorizationContextToken().getTokenString(), accessTokenIdentifier);
+        }
     }
-
-//    @Test(dataProvider = "requestBodyWithNonASCII", expectedExceptions = UserInfoEndpointException.class)
-//    public void testValidateTokenWithRequestBodyNonASCII(String contentType, String requestBody, String expected)
-// throws Exception {
-//        testValidateTokenWithRequestBody(contentType, requestBody, true);
-//    }
 
     @Test(expectedExceptions = UserInfoEndpointException.class)
     public void testValidateTokenWithWrongInputStream() throws Exception {
 
-        testValidateTokenWithRequestBody(contentTypeHeaderValue, "access_token=" + token, false);
+        prepareHttpServletRequest(null, contentTypeHeaderValue);
+
+        when(httpServletRequest.getInputStream()).thenThrow(new IOException());
+
+        userInforRequestDefaultValidator.validateRequest(httpServletRequest);
+    }
+
+    private void prepareOAuth2TokenValidationService() {
+
+        when(oAuth2TokenValidationService.validate(any()))
+                .thenReturn(new OAuth2TokenValidationResponseDTO());
+    }
+
+    private void prepareHttpServletRequest(String authorization, String contentType) {
+
+        when(httpServletRequest.getHeader(HttpHeaders.AUTHORIZATION)).thenReturn(authorization);
+        lenient().when(httpServletRequest.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(contentType);
+    }
+
+    @DataProvider
+    public Object[][] requestBody() {
+
+        return new Object[][]{{contentTypeHeaderValue, "", null}, {contentTypeHeaderValue, null, null},
+                {contentTypeHeaderValue, "access_token=" + token, token},
+                {contentTypeHeaderValue, "access_token=" + token + "&someOtherParam=value", token},
+                {contentTypeHeaderValue, "otherParam=value2&access_token=" + token + "&someOtherParam=value", token}};
+    }
+
+    @Test(dataProvider = "requestBody")
+    public void testValidateTokenWithRequestBodySuccess(String contentType, String requestBody, String expected)
+            throws Exception {
+
+        String token = testValidateTokenWithRequestBody(contentType, requestBody, true);
+        assertEquals(token, expected, "Expected token did not receive");
     }
 
     private String testValidateTokenWithRequestBody(String contentType, String requestBody, boolean mockScanner)
@@ -138,26 +169,20 @@ public class UserInfoISAccessTokenValidatorTest extends PowerMockTestCase {
 
         prepareHttpServletRequest(null, contentType);
         if (mockScanner) {
-            whenNew(Scanner.class).withAnyArguments().thenReturn(scanner);
-            when(scanner.hasNextLine()).thenReturn(true, false);
-            when(scanner.nextLine()).thenReturn(requestBody);
+            ServletInputStream inputStream = new ServletInputStream() {
+                private InputStream stream =
+                        new ByteArrayInputStream(requestBody == null ? "".getBytes() : requestBody.getBytes());
+
+                @Override
+                public int read() throws IOException {
+
+                    return stream.read();
+                }
+            };
+            doReturn(inputStream).when(httpServletRequest).getInputStream();
         } else {
             when(httpServletRequest.getInputStream()).thenThrow(new IOException());
         }
-
-        String token = userInforRequestDefaultValidator.validateRequest(httpServletRequest);
-        return token;
-    }
-
-    private void prepareOAuth2TokenValidationService() {
-
-        when(oAuth2TokenValidationService.validate(Matchers.anyObject()))
-                .thenReturn(new OAuth2TokenValidationResponseDTO());
-    }
-
-    private void prepareHttpServletRequest(String authorization, String contentType) {
-
-        when(httpServletRequest.getHeader(HttpHeaders.AUTHORIZATION)).thenReturn(authorization);
-        when(httpServletRequest.getHeader(HttpHeaders.CONTENT_TYPE)).thenReturn(contentType);
+        return userInforRequestDefaultValidator.validateRequest(httpServletRequest);
     }
 }

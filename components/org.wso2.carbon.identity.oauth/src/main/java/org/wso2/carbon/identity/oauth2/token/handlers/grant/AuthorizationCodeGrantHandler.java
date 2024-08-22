@@ -23,12 +23,17 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.identity.application.authentication.framework.exception.UserIdNotFoundException;
+import org.wso2.carbon.identity.application.authentication.framework.model.AuthenticatedUser;
+import org.wso2.carbon.identity.application.authentication.framework.util.FrameworkConstants;
+import org.wso2.carbon.identity.application.common.model.ClaimMapping;
 import org.wso2.carbon.identity.base.IdentityConstants;
 import org.wso2.carbon.identity.base.IdentityException;
 import org.wso2.carbon.identity.central.log.mgt.utils.LogConstants;
 import org.wso2.carbon.identity.central.log.mgt.utils.LoggerUtils;
 import org.wso2.carbon.identity.core.util.IdentityUtil;
 import org.wso2.carbon.identity.oauth.OAuthUtil;
+import org.wso2.carbon.identity.oauth.cache.AuthorizationGrantCache;
+import org.wso2.carbon.identity.oauth.cache.AuthorizationGrantCacheKey;
 import org.wso2.carbon.identity.oauth.cache.OAuthCache;
 import org.wso2.carbon.identity.oauth.cache.OAuthCacheKey;
 import org.wso2.carbon.identity.oauth.common.OAuthConstants;
@@ -49,6 +54,7 @@ import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 import org.wso2.carbon.utils.DiagnosticLog;
 
 import java.util.HashMap;
+import java.util.Map;
 
 import static org.wso2.carbon.identity.oauth.common.OAuthConstants.TokenBindings.NONE;
 import static org.wso2.carbon.identity.oauth2.util.OAuth2Util.buildCacheKeyStringForTokenWithUserId;
@@ -101,6 +107,22 @@ public class AuthorizationCodeGrantHandler extends AbstractAuthorizationGrantHan
         deactivateAuthzCode(tokReqMsgCtx, tokenResp.getTokenId(), authzCode);
         clearAuthzCodeCache(tokReqMsgCtx, authzCode);
         return tokenResp;
+    }
+
+    /**
+     * Build and return a string to be used as a lock for synchronous token issuance for refresh token grant type.
+     *
+     * @param tokReqMsgCtx        OAuthTokenReqMessageContext
+     * @return A string to be used as a lock for synchronous token issuance for refresh token grant type.
+     */
+    public String buildSyncLockString(OAuthTokenReqMessageContext tokReqMsgCtx) {
+
+        String clientId = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getClientId();
+        String authzCode = tokReqMsgCtx.getOauth2AccessTokenReqDTO().getAuthorizationCode();
+        String tokenBindingReference = OAuth2Util.getTokenBindingReferenceString(tokReqMsgCtx);
+        String scope = OAuth2Util.buildScopeString(tokReqMsgCtx.getScope());
+
+        return AUTHZ_CODE + ":" + clientId + ":" + authzCode + ":" + tokenBindingReference + ":" + scope;
     }
 
     private void setPropertiesForTokenGeneration(OAuthTokenReqMessageContext tokReqMsgCtx,
@@ -282,6 +304,9 @@ public class AuthorizationCodeGrantHandler extends AbstractAuthorizationGrantHan
                 OAuthUtil.clearOAuthCache(tokenReqDTO.getClientId(), validationResult.getAuthzCodeDO().
                         getAuthorizedUser(), scope);
             }
+            // The user resident organization should be resolved for the organization SSO users.
+            resolveUserResidentOrgForOrganizationSSOUsers(validationResult.getAuthzCodeDO().getAuthorizedUser(),
+                    tokenReqDTO.getAuthorizationCode());
             return validationResult.getAuthzCodeDO();
         } else {
             // This means an invalid authorization code was sent for validation. We return null since higher
@@ -621,5 +646,27 @@ public class AuthorizationCodeGrantHandler extends AbstractAuthorizationGrantHan
                         " was removed from the cache.");
             }
         }
+    }
+
+    private void resolveUserResidentOrgForOrganizationSSOUsers(AuthenticatedUser authenticatedUser, String authzCode) {
+
+        if (authenticatedUser.isFederatedUser() && FrameworkConstants.ORGANIZATION_LOGIN_IDP_NAME
+                .equals(authenticatedUser.getFederatedIdPName())) {
+            String userResideOrganization = resolveUserResidentOrganization(AuthorizationGrantCache.getInstance()
+                    .getValueFromCacheByCode(new AuthorizationGrantCacheKey(authzCode)).getUserAttributes());
+            authenticatedUser.setAccessingOrganization(userResideOrganization);
+            authenticatedUser.setUserResidentOrganization(userResideOrganization);
+        }
+    }
+
+    private String resolveUserResidentOrganization(Map<ClaimMapping, String> userAttributes) {
+
+        for (Map.Entry<ClaimMapping, String> attributes : userAttributes.entrySet()) {
+            if (FrameworkConstants.USER_ORGANIZATION_CLAIM.equals(
+                    attributes.getKey().getLocalClaim().getClaimUri())) {
+                return attributes.getValue();
+            }
+        }
+        return null;
     }
 }

@@ -57,7 +57,9 @@ import org.wso2.carbon.identity.oauth2.internal.OAuth2ServiceComponentHolder;
 import org.wso2.carbon.identity.oauth2.model.AccessTokenDO;
 import org.wso2.carbon.identity.oauth2.model.OAuth2Parameters;
 import org.wso2.carbon.identity.oauth2.model.RefreshTokenValidationDataDO;
+import org.wso2.carbon.identity.oauth2.model.SubjectTokenDO;
 import org.wso2.carbon.identity.oauth2.token.AccessTokenIssuer;
+import org.wso2.carbon.identity.oauth2.token.SubjectTokenIssuer;
 import org.wso2.carbon.identity.oauth2.token.bindings.TokenBinder;
 import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 import org.wso2.carbon.identity.openidconnect.model.Constants;
@@ -390,6 +392,20 @@ public class OAuth2Service extends AbstractAdmin {
     }
 
     /**
+     * Issues a subject token for the given OAuth authorization request message context.
+     *
+     * @param oauthAuthzMsgCtx the OAuth authorization request message context
+     * @return the subject token data object containing the issued subject token
+     * @throws IdentityOAuth2Exception if an error occurs during subject token issuance
+     */
+    public SubjectTokenDO issueSubjectToken(OAuthAuthzReqMessageContext oauthAuthzMsgCtx)
+            throws IdentityOAuth2Exception {
+
+        SubjectTokenIssuer subjectTokenIssuer = new SubjectTokenIssuer();
+        return subjectTokenIssuer.issue(oauthAuthzMsgCtx);
+    }
+
+    /**
      * Check Whether the provided client information satisfy the response type validation
      *
      * @param request      The HttpServletRequest front the client.
@@ -458,7 +474,9 @@ public class OAuth2Service extends AbstractAdmin {
             return tokenRespDTO;
         } catch (Exception e) { // in case of an error, consider it as a system error
             log.error("Error occurred while issuing the access token for Client ID : " +
-                    tokenReqDTO.getClientId() + ", User ID " + tokenReqDTO.getResourceOwnerUsername() +
+                    tokenReqDTO.getClientId() + ", User ID " + (LoggerUtils.isLogMaskingEnable ?
+                            LoggerUtils.getMaskedContent(tokenReqDTO.getResourceOwnerUsername()) :
+                            tokenReqDTO.getResourceOwnerUsername()) +
                     ", Scope : " + Arrays.toString(tokenReqDTO.getScope()) + " and Grant Type : " +
                     tokenReqDTO.getGrantType(), e);
             if (LoggerUtils.isDiagnosticLogsEnabled()) {

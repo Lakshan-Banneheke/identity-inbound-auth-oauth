@@ -78,8 +78,15 @@ public class DCRMUtils {
         appRegistrationRequest.setExtPkceMandatory(registrationRequestDTO.getExtPkceMandatory());
         appRegistrationRequest.setExtPkceSupportPlain(registrationRequestDTO.getExtPkceSupportPlain());
         appRegistrationRequest.setExtPublicClient(registrationRequestDTO.getExtPublicClient());
+        appRegistrationRequest.setUseClientIdAsSubClaimForAppTokens(
+                registrationRequestDTO.isUseClientIdAsSubClaimForAppTokens());
+        appRegistrationRequest.setOmitUsernameInIntrospectionRespForAppTokens(
+                registrationRequestDTO.isOmitUsernameInIntrospectionRespForAppTokens());
+        appRegistrationRequest.setExtTokenType(registrationRequestDTO.getExtTokenType());
         appRegistrationRequest.setJwksURI(registrationRequestDTO.getJwksUri());
         appRegistrationRequest.setTokenEndpointAuthMethod(registrationRequestDTO.getTokenEndpointAuthMethod());
+        appRegistrationRequest.setTokenEndpointAllowReusePvtKeyJwt(registrationRequestDTO
+                .isTokenEndpointAllowReusePvtKeyJwt());
         appRegistrationRequest.setTokenEndpointAuthSignatureAlgorithm
                 (registrationRequestDTO.getTokenEndpointAuthSigningAlg());
         appRegistrationRequest.setSectorIdentifierURI(registrationRequestDTO.getSectorIdentifierUri());
@@ -99,6 +106,8 @@ public class DCRMUtils {
                 (registrationRequestDTO.isTlsClientCertificateBoundAccessToken());
         appRegistrationRequest.setSubjectType(registrationRequestDTO.getSubjectType());
         appRegistrationRequest.setSoftwareStatement(registrationRequestDTO.getSoftwareStatement());
+        appRegistrationRequest.setAdditionalAttributes(registrationRequestDTO.getAdditionalAttributes());
+        appRegistrationRequest.setExtAllowedAudience(registrationRequestDTO.getExtAllowedAudience());
         return appRegistrationRequest;
 
     }
@@ -120,8 +129,15 @@ public class DCRMUtils {
         applicationUpdateRequest.setExtPkceMandatory(updateRequestDTO.getExtPkceMandatory());
         applicationUpdateRequest.setExtPkceSupportPlain(updateRequestDTO.getExtPkceSupportPlain());
         applicationUpdateRequest.setExtPublicClient(updateRequestDTO.getExtPublicClient());
+        applicationUpdateRequest.setExtTokenType(updateRequestDTO.getExtTokenType());
         applicationUpdateRequest.setJwksURI(updateRequestDTO.getJwksUri());
+        applicationUpdateRequest.setUseClientIdAsSubClaimForAppTokens(
+                updateRequestDTO.isUseClientIdAsSubClaimForAppTokens());
+        applicationUpdateRequest.setOmitUsernameInIntrospectionRespForAppTokens(
+                updateRequestDTO.isOmitUsernameInIntrospectionRespForAppTokens());
         applicationUpdateRequest.setTokenEndpointAuthMethod(updateRequestDTO.getTokenEndpointAuthMethod());
+        applicationUpdateRequest.setTokenEndpointAllowReusePvtKeyJwt(
+                updateRequestDTO.isTokenEndpointAllowReusePvtKeyJwt());
         applicationUpdateRequest.setTokenEndpointAuthSignatureAlgorithm
                 (updateRequestDTO.getTokenEndpointAuthSigningAlg());
         applicationUpdateRequest.setSectorIdentifierURI(updateRequestDTO.getSectorIdentifierUri());
@@ -140,6 +156,8 @@ public class DCRMUtils {
                 (updateRequestDTO.isTlsClientCertificateBoundAccessToken());
         applicationUpdateRequest.setSubjectType(updateRequestDTO.getSubjectType());
         applicationUpdateRequest.setSoftwareStatement(updateRequestDTO.getSoftwareStatement());
+        applicationUpdateRequest.setAdditionalAttributes(updateRequestDTO.getAdditionalAttributes());
+        applicationUpdateRequest.setExtAllowedAudience(updateRequestDTO.getExtAllowedAudience());
         return applicationUpdateRequest;
     }
 
@@ -218,13 +236,28 @@ public class DCRMUtils {
         specification we have to set the expiration time to 0.
         https://openid.net/specs/openid-connect-registration-1_0.html */
         applicationDTO.setClientSecretExpiresAt(0L);
+        applicationDTO.setExtApplicationDisplayName(application.getExtApplicationDisplayName());
+        applicationDTO.setExtApplicationOwner(application.getExtApplicationOwner());
+        applicationDTO.setExtApplicationTokenLifetime(application.getExtApplicationTokenLifetime());
+        applicationDTO.setExtUserTokenLifetime(application.getExtUserTokenLifetime());
+        applicationDTO.setExtRefreshTokenLifetime(application.getExtRefreshTokenLifetime());
+        applicationDTO.setExtIdTokenLifetime(application.getExtIdTokenLifetime());
+        applicationDTO.setExtPkceMandatory(application.getExtPkceMandatory());
+        applicationDTO.setExtPkceSupportPlain(application.getExtPkceSupportPlain());
+        applicationDTO.setExtPublicClient(application.getExtPublicClient());
+        applicationDTO.setTokenTypeExtension(application.getExtTokenType());
+        applicationDTO.setExtTokenType(application.getExtTokenType());
         applicationDTO.setJwksUri(application.getJwksURI());
         applicationDTO.setTokenEndpointAuthMethod(application.getTokenEndpointAuthMethod());
+        applicationDTO.setTokenEndpointAllowReusePvtKeyJwt(application.isTokenEndpointAllowReusePvtKeyJwt());
         applicationDTO.setTokenEndpointAuthSigningAlg(application.getTokenEndpointAuthSignatureAlgorithm());
         applicationDTO.setSectorIdentifierUri(application.getSectorIdentifierURI());
         applicationDTO.setIdTokenSignedResponseAlg(application.getIdTokenSignatureAlgorithm());
         applicationDTO.setIdTokenEncryptedResponseAlg(application.getIdTokenEncryptionAlgorithm());
         applicationDTO.setIdTokenEncryptedResponseEnc(application.getIdTokenEncryptionMethod());
+        applicationDTO.setUseClientIdAsSubClaimForAppTokens(application.getUseClientIdAsSubClaimForAppTokens());
+        applicationDTO.setOmitUsernameInIntrospectionRespForAppTokens(
+                application.getOmitUsernameInIntrospectionRespForAppTokens());
         applicationDTO.setRequireSignedRequestObject(application.isRequestObjectSignatureValidationEnabled());
         applicationDTO.setRequestObjectSigningAlg(application.getRequestObjectSignatureAlgorithm());
         applicationDTO.setTlsClientAuthSubjectDn(application.getTlsClientAuthSubjectDN());
@@ -234,6 +267,8 @@ public class DCRMUtils {
         applicationDTO.setRequirePushAuthorizationRequest(application.isRequirePushedAuthorizationRequests());
         applicationDTO.setTlsClientCertificateBoundAccessToken(application.isTlsClientCertificateBoundAccessTokens());
         applicationDTO.setSoftwareStatement(application.getSoftwareStatement());
+        applicationDTO.setAdditionalAttributes(application.getAdditionalAttributes());
+        applicationDTO.setExtAllowedAudience(application.getExtAllowedAudience());
         return applicationDTO;
     }
 
